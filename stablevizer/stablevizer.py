@@ -11,16 +11,17 @@ import kmedoids
 import numpy as np
 import pandas as pd
 import seaborn as sb
-import smahtkit as sk
 
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from sklearn.cluster import MeanShift, estimate_bandwidth
 from sklearn.metrics import pairwise_distances
 
+from stablevizer.protocols import PROTOCOLS
+
 # Custom color palettes
-PROTOCOL_PALETTE = {k:v['color'] for k,v in sk.smhtid.PROTOCOLS.items()}
-TISSUE_PALETTE = {_['tissue_abv']:_['color'] for _ in sk.smhtid.PROTOCOLS.values()}
+PROTOCOL_PALETTE = {k:v['color'] for k,v in PROTOCOLS.items()}
+TISSUE_PALETTE = {_['tissue_abv']:_['color'] for _ in PROTOCOLS.values()}
 HAP_PALETTE = dict(zip([0, 1, 2], sb.color_palette("Set2", 3)))
 THIRD_PALETTE = {False: 'gray', True: 'black'}
 
@@ -282,7 +283,7 @@ def instability_plot(filt_view, title=None, absolute=False):
     # Instability Plot
     fig, ax = plt.subplots(dpi=180)
 
-    filt_view['tissue'] = filt_view['protocol'].apply(lambda x: sk.smhtid.PROTOCOLS[x]['tissue_abv'])
+    filt_view['tissue'] = filt_view['protocol'].apply(lambda x: PROTOCOLS[x]['tissue_abv'])
 
     order = filt_view['donor'].unique()
     marker_shapes = ['o', 's', '^', 'D', 'v', 'P', 'X', '*', 'h', '<', '>', 'p']
@@ -313,7 +314,7 @@ def instability_plot(filt_view, title=None, absolute=False):
           ylabel='Max - Min somatic read-length (bp)',
           xlim=xlim,
           ylim=ylim,
-         title=title)
+          title=title)
     plt.grid(zorder=1)
     _ = plt.legend(bbox_to_anchor=(1, 1.02), fontsize=8)
     _ = plt.tight_layout()
@@ -338,8 +339,8 @@ def instability_plot(filt_view, title=None, absolute=False):
     return fig
 
 
-if __name__ == '__main__':
-    args = parse_args(sys.argv[1:])
+def run_stablevizer(args):
+    args = parse_args(args)
     data = pd.read_csv(args.in_tsv, sep='\t')
     expected = ['donor', 'protocol', 'hap', 'length']
     all_good = True
@@ -445,7 +446,7 @@ if __name__ == '__main__':
             m_fig.savefig(f"{args.output}.{donor}_detail.png", bbox_inches='tight')
     
     if not (args.all_detail or args.ALL_detail):
-        sys.exit(1)
+        sys.exit(0)
     
     has_soma = filt_view['donor'].unique()
     uniq_donor = has_soma if args.all_detail else data['donor'].unique()

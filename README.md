@@ -3,6 +3,9 @@ TR instability visualization tool
 
 Documentation pending.
 
-Usage `python stablevizer.py -h`
+Install via
+```bash
+python3 -m pip install .
+```
 
-Many requirements, also
+Usage See `stablevizer -h`
