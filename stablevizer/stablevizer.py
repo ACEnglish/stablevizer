@@ -299,7 +299,8 @@ def instability_plot(filt_view, title=None, absolute=False):
                        palette=TISSUE_PALETTE,
                        edgecolors='black',
                        ax=ax,
-                       zorder=2)
+                       zorder=2,
+                       alpha=1)
 
     if not title:
         title = 'TR Instability Plot'
