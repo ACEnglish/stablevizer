@@ -228,10 +228,10 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
     germ = pd.DataFrame(germ_parts).round().astype(int)
     germ.index.name = 'donor'
     data = data.join(result)
-    data['∆'] = data['length'] - data['germ_length']
+    data['delta'] = data['length'] - data['germ_length']
     data['is_germ'] = data['is_germ'].infer_objects(copy=False).fillna(True).astype(bool)
     if absolute:
-        data['∆'] = data['∆'].abs()
+        data['delta'] = data['delta'].abs()
     fix_soma_haplotypes(data, germ)
 
     return data, summary, germ
@@ -399,16 +399,16 @@ def run_stablevizer(args):
     # This opens the door for potential reassignment of reads to the other haplotype
     grp = data[m_filt & data['donor'].isin(keep_donors)].groupby(['donor', 'protocol'])
     # Record the upper/lower ∆
-    lower = grp['∆'].min()
-    mean = grp['∆'].mean()
-    upper = grp['∆'].max()
+    lower = grp['delta'].min()
+    mean = grp['delta'].mean()
+    upper = grp['delta'].max()
     spread = grp['length'].max() - grp['length'].min()
     alt_reads = grp.size()
 
     view = pd.concat([
         lower.round(1),
         mean.round(1),
-        grp['∆'].quantile(.5),
+        grp['delta'].quantile(.5).round(1),
         upper.round(1),
         spread.round(1),
         alt_reads],
