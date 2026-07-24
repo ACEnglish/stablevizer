@@ -45,7 +45,7 @@ def parse_args(args):
     parser.add_argument("--rehaplotype", action="store_true",
                         help="Perform naive kmedoid clustering of readlengths to reassign haplotypes (%(default)s)")
     parser.add_argument("--abs-delta", action="store_true",
-                        help="Calculate abs(∆) ($(default)s)")
+                        help="Calculate abs(∆) (%(default)s)")
     parser.add_argument("-t", "--title", default=None,
                         help="Locus detail to put in plot titles")
     parser.add_argument("--detail", type=str, default=None,
@@ -247,6 +247,9 @@ def fix_soma_haplotypes(data, germ_lookup):
         conds = []
         to_check = sub[~sub['is_germ']].copy()
         to_check['change'] = False
+        # Sometimes there is no germline, I guess
+        if donor[0] not in germ_lookup.index:
+            continue
         # Gotta [[ to ensure a frame is returned
         for _, spread in germ_lookup.loc[[donor[0]]].iterrows():
             if spread['hap'] == 0:
@@ -365,12 +368,16 @@ def run_stablevizer(args):
         print(f"Subsetting to {len(s)} donors", file=sys.stderr)
         data.drop(data.index[~data['donor'].isin(s)], inplace=True)
     
+    if not len(data):
+        print("No reads to cluster!!!", file=sys.stderr)
+        exit(1)
+
     if args.rehaplotype:
         data = rehaplotype(data)
     else:
         unphased = data['hap'] == 0
-        pct = (unphased.mean() * 100).round(1)
-        print(f"Dropping {unphased.sum()} ({pct}%) unphased reads", file=sys.stderr)
+        pct = (unphased.mean() * 100)
+        print(f"Dropping {unphased.sum()} ({pct:.1f}%) unphased reads", file=sys.stderr)
         data.drop(data.index[unphased], inplace=True)
 
     data, clusters, germ = perform_clustering(data,
@@ -431,10 +438,13 @@ def run_stablevizer(args):
     print(f"Identified {filt_view['donor'].nunique()} donor / {filt_view['protocol'].nunique()} protocols with instability", file=sys.stderr)
     filt_view.to_csv(f"{args.output}.unstable.tsv", sep='\t', index=False)
     
-    m_fig = instability_plot(filt_view, args.title, args.abs_delta)
-    fmt = 'pdf' if args.pdf else 'png'
-    plt.rcParams['pdf.fonttype'] = 42
-    m_fig.savefig(f'{args.output}.instability.{fmt}', format=fmt, bbox_inches='tight')
+    if len(filt_view):
+        m_fig = instability_plot(filt_view, args.title, args.abs_delta)
+        fmt = 'pdf' if args.pdf else 'png'
+        plt.rcParams['pdf.fonttype'] = 42
+        m_fig.savefig(f'{args.output}.instability.{fmt}', format=fmt, bbox_inches='tight')
+    else:
+        print(f"No instability detected. Skipping main plot", file=sys.stderr)
     
     if args.detail:
         print(f"Detailing {len(args.detail)} donors' TR", file=sys.stderr)
