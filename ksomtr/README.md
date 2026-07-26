@@ -73,12 +73,12 @@ python ksomtr.py plot -s models/downsample.normalize.som.pkl \
     -o patho_plot.png
 ```
 
+- I really wish the bed files 'carried' information forward - could move region_parse to pandas
+- I think I can merge seq_to_kvec and seq_to_kmer now that it is out of kanpig
 - Do I want to improve the auto plotting? Or even do it at all?
 - I still want to be able to put in markers
-- I really wish the bed files 'carried' information forward - could move region_parse to pandas
+- Make a `build` command that does all the above steps automatically 
 - Expose every method. I mean, why not be able to calc hompolymer from command line
-- I think I can merge seq_to_kvec and seq_to_kmer now that it is out of kanpig
-- Make a `build` command that does all the above steps automatically
 
 # Notes:
 

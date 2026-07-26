@@ -6,12 +6,18 @@ import pysam
 import minisom
 from truvari.annotations.lcr import sequence_entropy
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
+
+import matplotlib.pyplot as plt
+from matplotlib.patches import RegularPolygon, Ellipse
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib import cm, colorbar
+from matplotlib.lines import Line2D
+from matplotlib.colors import Normalize
 
 KMER = 3
 COMPLEMENT = str.maketrans("ATCG", "TAGC")
-
-import numpy as np
 
 ## LLM rewrite of kanpig code
 # Lookup table: maps ASCII byte value -> 2-bit code (A=0, G=1, C=2, T=3, default=0)
@@ -351,6 +357,87 @@ def downsample(args):
     fps_sample = sample_farthest_point(df, ['a', 'b', 'c'], n_samples=NSAMP, random_state=8811)
     fps_sample.to_csv(args.output, sep='\t', index=False, header=False)
 
+
+def som_plot(som,  heatmap=None, heatmap_label="UMatrix", color_map=cm.Blues, norm=None):
+    xx, yy = som.get_euclidean_coordinates()
+    weights = som.get_weights()
+
+    if heatmap is None:
+        heatmap = som.distance_map()
+        
+    if norm is None:
+        norm = Normalize(vmin=np.nanmin(heatmap), vmax=np.nanmax(heatmap))
+        
+    f = plt.figure(figsize=(10,10))
+    ax = f.add_subplot(111)
+
+    ax.set_aspect('equal')
+
+    # iteratively add hexagons
+    for i in range(weights.shape[0]):
+        for j in range(weights.shape[1]):
+            wy = yy[(i, j)] * np.sqrt(3) / 2
+            hex = RegularPolygon((xx[(i, j)], wy),
+                                 numVertices=6,
+                                 radius=.95 / np.sqrt(3),
+                                 facecolor=color_map(norm(heatmap[i, j])),
+                                 alpha=.4,
+                                 edgecolor='gray')
+            ax.add_patch(hex)
+    xrange = np.arange(weights.shape[0])
+    yrange = np.arange(weights.shape[1])
+    plt.xticks(xrange, xrange)
+    plt.yticks(yrange * np.sqrt(3) / 2, yrange)
+    buff = 0.55
+    ax.set_xlim(xx.min() - buff, xx.max() + buff)
+    ax.set_ylim(yy.min()*np.sqrt(3)/2 - buff, yy.max()*np.sqrt(3)/2 + buff)
+    
+    # Heatmap
+    divider = make_axes_locatable(plt.gca())
+    ax_cb = divider.new_horizontal(size="5%", pad=0.05)
+    cb1 = colorbar.ColorbarBase(ax_cb, cmap=color_map, norm=norm,  # <-- pass norm here too
+                                orientation='vertical', alpha=.4)
+    cb1.ax.get_yaxis().labelpad = 16
+    cb1.ax.set_ylabel(heatmap_label,
+                      rotation=270, fontsize=16)
+    plt.gcf().add_axes(ax_cb)
+    plt.tight_layout()
+    return f, ax
+
+def plot_map(args):
+    """
+    Assume it's *-map outputs and just go for it. Doesn't matter
+    """
+    parser = argparse.ArgumentParser(prog="plot-map")
+    parser.add_argument("-b", "--bed-fn", required=True)
+    parser.add_argument("-s", "--som-fn", required=True)
+    parser.add_argument("-o", "--output", required=True)
+    parser.add_argument("-t", "--title", default="SOM Plot")
+    #parser.add_argument("-X", dtype=str)
+    #parser.add_argument("-Y", dtype=str)
+    #parser.add_argument("-O", dtype=str)
+    args = parser.parse_args(args)
+    
+    som = pickle.load(open(args.som_fn, 'rb'))
+
+    wxy = pd.read_csv(args.bed_fn, sep='\t',
+                      names=['chrom', 'start', 'end', 'X', 'Y']
+                     ).set_index(['chrom', 'start', 'end'])
+
+    l = wxy.groupby(['X', 'Y']).size()
+    counts =  np.zeros(som['som'].distance_map().shape)
+    for pos, v in l.items():
+        counts[pos] = v
+
+    fig, ax = som_plot(som['som'],
+                       heatmap=counts, 
+                       heatmap_label=args.title, 
+                       color_map=cm.RdYlBu)
+    
+    # TODO: Enable XYO Markers
+    plt.savefig(args.output)
+
+
 if __name__ == '__main__':
 
     TOOLS = {
@@ -360,6 +447,7 @@ if __name__ == '__main__':
             'kvec-map': kvec_map,
             'bed-seqstat': bed_seqstat,
             'downsample': downsample,
+            'plot-map': plot_map,
             }
     parser = argparse.ArgumentParser(prog="ksomtr", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
