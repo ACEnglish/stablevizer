@@ -37,6 +37,16 @@ python ksomtr.py bed-map -s models/downsample.normalize.som.pkl \
     -r ~/code/references/grch38/GRCh38_1kg_mainchrs.fa \
     -b models/adotto.v2.trgt.lite.bed > adotto.full_mapping.bed
 ```
+Slightly faster option where you don't regenerate the kvec
+```bash
+python ksomtr.py kvec-map -s models/downsample.normalize.som.pkl \
+    -k models/downsample.normalize.kvec.npz \
+    -o models/downsample.normalize.map.txt
+
+paste models/adotto.v2.trgt.lite_seqstat_down_sampled.bed models/downsample.normalize.map.txt > adotto.full_mapping.bed
+```
+Then you can `sort | uniq` the map to get an idea of the spread of loci. Or go to the plotting Notebook
+
 
 ### TODO ###
 
@@ -67,7 +77,8 @@ python ksomtr.py plot -s models/downsample.normalize.som.pkl \
 - I still want to be able to put in markers
 - I really wish the bed files 'carried' information forward - could move region_parse to pandas
 - Expose every method. I mean, why not be able to calc hompolymer from command line
-
+- I think I can merge seq_to_kvec and seq_to_kmer now that it is out of kanpig
+- Make a `build` command that does all the above steps automatically
 
 # Notes:
 

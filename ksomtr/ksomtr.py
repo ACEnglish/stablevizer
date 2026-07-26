@@ -216,6 +216,26 @@ def bed_map(args):
         print(*region, *w, sep='\t', file=fout)
     fout.close()
 
+def kvec_map(args):
+    """
+    Map a kvec onto a SOM. Just outputs list of coordinates
+    """
+    parser = argparse.ArgumentParser(prog="kvec-map")
+    parser.add_argument("-k", "--kvec-fn", required=True)
+    parser.add_argument("-s", "--som-fn", required=True)
+    parser.add_argument("-o", "--output", default="/dev/stdout",
+                        help="%(default)s")
+    args = parser.parse_args(args)
+
+    data = np.load(args.kvec_fn)
+    som = pickle.load(open(args.som_fn, 'rb'))
+    fout = open(args.output, 'w')
+    for i in tqdm(data['kmers']):
+        print(*som['som'].winner(i), sep='\t', file=fout)
+    fout.close()
+
+    
+
 def homopolymer_percent(seq, min_run=3, ignore_n=True):
     """
     Calculate the percentage of a nucleotide sequence that lies within
@@ -325,7 +345,7 @@ def downsample(args):
     parser.add_argument("-o", "--output", default="/dev/stdout",
                         help="%(default)s")
     args = parser.parse_args(args)
-
+    
     # Should be asserting that this is the shape..
     df = pd.read_csv(in_fn, sep='\t', names=['chrom', 'start', 'end', 'a', 'b', 'c'])
     fps_sample = sample_farthest_point(df, ['a', 'b', 'c'], n_samples=NSAMP, random_state=8811)
@@ -337,6 +357,7 @@ if __name__ == '__main__':
             'kvec': build_kvecs,
             'som': build_som,
             'bed-map': bed_map,
+            'kvec-map': kvec_map,
             'bed-seqstat': bed_seqstat,
             'downsample': downsample,
             }
