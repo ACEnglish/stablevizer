@@ -206,7 +206,6 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
                         bw])
 
         assign = labels.isin(germ_labels).to_frame()
-        # Recording this for everything is dumb. I need to just put it in protocol/donor/hap
         germ_length = sub[assign['is_germ']]['length']
         germ_spread = pd.Series([_[1],
                                  germ_length.mean(),
@@ -228,40 +227,63 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
     germ = pd.DataFrame(germ_parts).round().astype(int)
     germ.index.name = 'donor'
     data = data.join(result)
-    data['delta'] = data['length'] - data['germ_length']
     data['is_germ'] = data['is_germ'].infer_objects(copy=False).fillna(True).astype(bool)
+    
+    fix_soma_haplotypes(data, germ)
+
+    data['delta'] = data['length'] - data['germ_length']
     if absolute:
         data['delta'] = data['delta'].abs()
-    fix_soma_haplotypes(data, germ)
 
     return data, summary, germ
 
 def fix_soma_haplotypes(data, germ_lookup):
     """
-    The haplotype assignment might be bad, so we go back into groupby donor and get the germ_length distribution for
-    haplotypes. Each non-germ read is reassigned to germ if it lands within the germ_q/1-germ_q of that distribution.
+    The haplotype assignment might be bad, so for each donor we look at the
+    germ_length distribution per haplotype (germ_lookup) and reassign any
+    non-germ read whose length falls within [lower, upper] of that
+    haplotype's distribution back to germ. We also flip its assigned
+    haplotype (assumes hap in {1, 2}) and reset its expected germ_length.
+
+    Mutates `data` in place.
     """
     read_cnt = 0
     donor_cnt = 0
-    for donor, sub in data.groupby(['donor']):
-        conds = []
-        to_check = sub[~sub['is_germ']].copy()
-        to_check['change'] = False
+
+    for donor, sub in data.groupby('donor'):
         # Sometimes there is no germline, I guess
-        if donor[0] not in germ_lookup.index:
+        if donor not in germ_lookup.index:
             continue
+
+        to_check = sub.loc[~sub['is_germ']].copy()
+        if to_check.empty:
+            continue
+
         # Gotta [[ to ensure a frame is returned
-        for _, spread in germ_lookup.loc[[donor[0]]].iterrows():
+        donor_lookup = germ_lookup.loc[[donor]]
+
+        change = pd.Series(False, index=to_check.index)
+        for _, spread in donor_lookup.iterrows():
             if spread['hap'] == 0:
                 continue
-            to_check['change'] |= to_check['length'].between(spread['lower'], spread['upper'])
+            change |= to_check['length'].between(spread['lower'], spread['upper'])
 
-        data.loc[data.index.isin(to_check.index), 'is_germ'] = to_check['change'].values
-        more = to_check['change'].sum()
-        if more:
-            read_cnt += more
-            donor_cnt += 1
+        if not change.any():
+            continue
+
+        to_check['hap'] = to_check['hap'].where(~change, to_check['hap'] % 2 + 1)
+        to_check['is_germ'] = change
+        to_check['germ_length'] = to_check['hap'].map(donor_lookup.set_index('hap')['mean'])
+
+        data.loc[to_check.index, ['is_germ', 'hap', 'germ_length']] = (
+            to_check[['is_germ', 'hap', 'germ_length']]
+        )
+
+        read_cnt += change.sum()
+        donor_cnt += 1
+
     print(f"Masked {read_cnt} oddly haplotyped reads in {donor_cnt} donors within germ-q", file=sys.stderr)
+
 
 def rehaplotype(data):
     """
