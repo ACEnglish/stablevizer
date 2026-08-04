@@ -209,12 +209,13 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
         germ_length = sub[assign['is_germ']]['length']
         germ_spread = pd.Series([_[1],
                                  germ_length.mean(),
+                                 germ_length.median(),
                                  germ_length.quantile(germ_q),
                                  germ_length.quantile(1 - germ_q)
                                  ],
-                                index=['hap', 'mean', 'lower', 'upper'],
+                                index=['hap', 'mean', 'mid', 'lower', 'upper'],
                                 name=_[0])
-        assign['germ_length'] = germ_spread['mean']
+        assign['germ_length'] = germ_spread['mid']
         germ_spread.name = _[0]
         germ_spread['hap'] = _[1]
         result_parts.append(assign)
@@ -273,7 +274,7 @@ def fix_soma_haplotypes(data, germ_lookup):
 
         to_check['hap'] = to_check['hap'].where(~change, to_check['hap'] % 2 + 1)
         to_check['is_germ'] = change
-        to_check['germ_length'] = to_check['hap'].map(donor_lookup.set_index('hap')['mean'])
+        to_check['germ_length'] = to_check['hap'].map(donor_lookup.set_index('hap')['mid'])
 
         data.loc[to_check.index, ['is_germ', 'hap', 'germ_length']] = (
             to_check[['is_germ', 'hap', 'germ_length']]
