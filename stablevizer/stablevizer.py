@@ -372,13 +372,13 @@ def run_stablevizer(args):
     all_good = True
     for i in expected:
         if i not in data.columns:
-            print("Expected column {i} not in {args.in_tsv}", file=sys.stderr)
+            print(f"Expected column {i} not in {args.in_tsv}", file=sys.stderr)
             all_good = False
 
     avail_donor = data['donor'].unique()
     for i in args.detail:
         if not i in avail_donor:
-            print("--detail {i} not in args.in_tsv}")
+            print(f"--detail {i} not in args.in_tsv}")
             all_good = False
             
     if not all_good:
@@ -488,7 +488,7 @@ def run_stablevizer(args):
 
     parent_fig = plt.figure(figsize=(8 * side, 4 * side))
     subfigs = parent_fig.subfigures(side, side)
-    
+    # Bug - when there's one donor, you can't run `--all-detail`. side == 1, so, turn it into an array?
     for subfig, donor in zip(subfigs.ravel(), sorted(uniq_donor)):
         third = 'auto' if donor in has_soma else None
         sub = data[data['donor'] == donor]
