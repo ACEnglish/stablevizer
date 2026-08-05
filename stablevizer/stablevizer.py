@@ -379,7 +379,7 @@ def run_stablevizer(args):
     avail_donor = data['donor'].unique()
     for i in args.detail:
         if not i in avail_donor:
-            print(f"--detail {i} not in args.in_tsv}")
+            print(f"--detail {i} not in args.in_tsv")
             all_good = False
             
     if not all_good:
