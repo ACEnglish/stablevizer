@@ -413,29 +413,39 @@ def plot_map(args):
     parser.add_argument("-s", "--som-fn", required=True)
     parser.add_argument("-o", "--output", required=True)
     parser.add_argument("-t", "--title", default="SOM Plot")
+    parser.add_argument("--metric", default="count", choices=['count', 'mean', 'sum', 'median'],
+                        help="Default heatmap count, with other choices, expect sixth column")
+    # `code/laytr/laytr/somplot.py`
+    # TODO: Enable XYO Markers
     #parser.add_argument("-X", dtype=str)
     #parser.add_argument("-Y", dtype=str)
     #parser.add_argument("-O", dtype=str)
+    # TODO: Enable a 5th column of a value that we groupby sum/mean/median for the value
     args = parser.parse_args(args)
     
     som = pickle.load(open(args.som_fn, 'rb'))
+    
+    columns = ['chrom', 'start', 'end', 'X', 'Y']
+    if args.metric != 'count':
+        coulumns.append("sixth")
 
     wxy = pd.read_csv(args.bed_fn, sep='\t',
-                      names=['chrom', 'start', 'end', 'X', 'Y']
+                      names=columns
                      ).set_index(['chrom', 'start', 'end'])
+    
+    if args.metric == 'count':
+        wxy['sixth'] = 1
 
-    l = wxy.groupby(['X', 'Y']).size()
-    counts =  np.zeros(som['som'].distance_map().shape)
+    cells =  np.zeros(som['som'].distance_map().shape)
+    l = wxy.groupby(['X', 'Y'])['sixth'].agg(args.metric)
     for pos, v in l.items():
-        counts[pos] = v
+        cells[pos] = v
 
     fig, ax = som_plot(som['som'],
                        heatmap=counts, 
                        heatmap_label=args.title, 
                        color_map=cm.RdYlBu)
     
-    # TODO: Enable XYO Markers
-    # `code/laytr/laytr/somplot.py`
     plt.savefig(args.output)
 
 
