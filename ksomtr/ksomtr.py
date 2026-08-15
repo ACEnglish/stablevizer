@@ -294,7 +294,7 @@ def homopolymer_percent(seq, min_run=3, ignore_n=True):
 
 def bed_seqstat(args):
     """
-    Calculate GC% of bed file regions
+    Calculate GC%, homopolymer %, and entropy of bed file region sequence
     """
     parser = argparse.ArgumentParser(prog="bed-seqstat")
     parser.add_argument("-b", "--bed-fn", required=True)
@@ -427,7 +427,7 @@ def plot_map(args):
     
     columns = ['chrom', 'start', 'end', 'X', 'Y']
     if args.metric != 'count':
-        coulumns.append("sixth")
+        columns.append("sixth")
 
     wxy = pd.read_csv(args.bed_fn, sep='\t',
                       names=columns
@@ -442,7 +442,7 @@ def plot_map(args):
         cells[pos] = v
 
     fig, ax = som_plot(som['som'],
-                       heatmap=counts, 
+                       heatmap=cells, 
                        heatmap_label=args.title, 
                        color_map=cm.RdYlBu)
     
