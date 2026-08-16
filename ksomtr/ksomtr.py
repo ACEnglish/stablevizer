@@ -16,6 +16,10 @@ from matplotlib import cm, colorbar
 from matplotlib.lines import Line2D
 from matplotlib.colors import Normalize
 
+from shapely.geometry import Polygon
+from shapely.ops import unary_union
+
+
 KMER = 3
 COMPLEMENT = str.maketrans("ATCG", "TAGC")
 
@@ -358,7 +362,12 @@ def downsample(args):
     fps_sample.to_csv(args.output, sep='\t', index=False, header=False)
 
 
-def som_plot(som,  heatmap=None, heatmap_label="UMatrix", color_map=cm.Blues, norm=None):
+def som_plot(som,
+             heatmap=None,
+             heatmap_label="UMatrix",
+             color_map=cm.Blues,
+             norm=None,
+             cluster_df=None):
     xx, yy = som.get_euclidean_coordinates()
     weights = som.get_weights()
 
@@ -368,26 +377,78 @@ def som_plot(som,  heatmap=None, heatmap_label="UMatrix", color_map=cm.Blues, no
     if norm is None:
         norm = Normalize(vmin=np.nanmin(heatmap), vmax=np.nanmax(heatmap))
         
-    f = plt.figure(figsize=(10,10))
+    f = plt.figure(figsize=(10,10), dpi=180)
     ax = f.add_subplot(111)
 
     ax.set_aspect('equal')
 
+    if cluster_df is not None and not cluster_df.empty:
+        to_highlight = cluster_df.set_index(['X', 'Y']).index
+    else:
+        to_highlight = None
+
     # iteratively add hexagons
+    all_hex = {}
     for i in range(weights.shape[0]):
         for j in range(weights.shape[1]):
+            unit_sig = to_highlight is None or (i,j) in to_highlight
             wy = yy[(i, j)] * np.sqrt(3) / 2
             hex = RegularPolygon((xx[(i, j)], wy),
                                  numVertices=6,
-                                 radius=.95 / np.sqrt(3),
+                                 radius=0.95 / np.sqrt(3) if unit_sig else 0.70 / np.sqrt(3),
                                  facecolor=color_map(norm(heatmap[i, j])),
-                                 alpha=.4,
-                                 edgecolor='gray')
+                                 alpha=0.6 - (int(not unit_sig) * 0.2),
+                                 edgecolor='black' if unit_sig else 'gray')
+                                 #zorder=3 if unit_sig else 1)
             ax.add_patch(hex)
-    xrange = np.arange(weights.shape[0])
-    yrange = np.arange(weights.shape[1])
-    plt.xticks(xrange, xrange)
-    plt.yticks(yrange * np.sqrt(3) / 2, yrange)
+            all_hex[(i, j)] = hex
+
+    # Draw Cluster Outer Boundaries
+    if cluster_df is not None and not cluster_df.empty:
+        uniq_clusters = cluster_df['cluster_id'].unique()
+        r_union = 1.0 / np.sqrt(3)  # Exact radius (no margin gap) to ensure proper polygon union
+        # 0.5 for a turn
+        angles = np.linspace(0.5, 2 * np.pi + 0.5, 6, endpoint=False)
+        for cluster_id, group in cluster_df.groupby('cluster_id'):
+            if not group['cluster_reject_tier2'].any():
+                continue
+            polys = []
+
+            for _, row in group.iterrows():
+                i, j = int(row['X']), int(row['Y'])
+                cx = xx[(i, j)]
+                cy = yy[(i, j)] * np.sqrt(3) / 2
+                verts = [(cx + r_union * np.cos(a), cy + r_union * np.sin(a)) for a in angles]
+                polys.append(Polygon(verts))
+                # Unset the edge
+                all_hex[(i, j)].set_edgecolor(None)
+
+            if polys:
+                merged = unary_union(polys)
+                geoms = merged.geoms if merged.geom_type == 'MultiPolygon' else [merged]
+
+                for geom in geoms:
+                    # Draw outer perimeter
+                    x, y = geom.exterior.xy
+                    ax.plot(x, y,
+                            color='black',
+                            linewidth=2.5,
+                            linestyle='-')
+
+                    # Draw inner holes (if any)
+                    for interior in geom.interiors:
+                        hx, hy = interior.xy
+                        ax.plot(hx, hy,
+                                color='black',
+                                linewidth=2.5,
+                                linestyle='-')
+
+
+    #xrange = np.arange(weights.shape[0])
+    #yrange = np.arange(weights.shape[1])
+
+    plt.xticks([])#xrange, [""] * len(xrange))
+    plt.yticks([])#yrange * np.sqrt(3) / 2, [""] * len(yrange))
     buff = 0.55
     ax.set_xlim(xx.min() - buff, xx.max() + buff)
     ax.set_ylim(yy.min()*np.sqrt(3)/2 - buff, yy.max()*np.sqrt(3)/2 + buff)
@@ -404,6 +465,7 @@ def som_plot(som,  heatmap=None, heatmap_label="UMatrix", color_map=cm.Blues, no
     plt.tight_layout()
     return f, ax
 
+
 def plot_map(args):
     """
     Assume it's *-map outputs and just go for it. Doesn't matter
@@ -415,16 +477,21 @@ def plot_map(args):
     parser.add_argument("-t", "--title", default="SOM Plot")
     parser.add_argument("--metric", default="count", choices=['count', 'mean', 'sum', 'median'],
                         help="Default heatmap count, with other choices, expect sixth column")
+    parser.add_argument("--cluster", default=None,
+                        help="som-stat tier2 clustering result")
     # `code/laytr/laytr/somplot.py`
     # TODO: Enable XYO Markers
     #parser.add_argument("-X", dtype=str)
     #parser.add_argument("-Y", dtype=str)
     #parser.add_argument("-O", dtype=str)
-    # TODO: Enable a 5th column of a value that we groupby sum/mean/median for the value
+
     args = parser.parse_args(args)
-    
+
+    if args.cluster:
+        args.cluster = pd.read_csv(args.cluster, sep='\t')
+
     som = pickle.load(open(args.som_fn, 'rb'))
-    
+
     columns = ['chrom', 'start', 'end', 'X', 'Y']
     if args.metric != 'count':
         columns.append("sixth")
@@ -444,7 +511,8 @@ def plot_map(args):
     fig, ax = som_plot(som['som'],
                        heatmap=cells, 
                        heatmap_label=args.title, 
-                       color_map=cm.RdYlBu)
+                       color_map=cm.RdYlBu,
+                       cluster_df=args.cluster)
     
     plt.savefig(args.output)
 
