@@ -427,7 +427,7 @@ def run_stablevizer(args):
     # You could be more clever here. Instead of all reads, we should give an opportunity
     # for each haplotype to have the instability.
     # This opens the door for potential reassignment of reads to the other haplotype
-    grp = data[m_filt & data['donor'].isin(keep_donors)].groupby(['donor', 'protocol'])
+    grp = data[m_filt & data['donor'].isin(keep_donors)].groupby(['donor', 'protocol', 'hap'])
     # Record the upper/lower ∆
     lower = grp['delta'].min()
     mean = grp['delta'].mean()
@@ -447,7 +447,7 @@ def run_stablevizer(args):
     view.columns = ['delta_min', 'delta_mean', 'delta_mid', 'delta_max', 'spread', 'alt_reads']
 
     # Record the per-protocol coverage for calculating VAF
-    tot_reads = data.groupby(['donor', 'protocol']).size()
+    tot_reads = data.groupby(['donor', 'protocol', 'hap']).size()
     tot_reads.name = 'coverage'
     view = view.join(tot_reads, how='left')
 
