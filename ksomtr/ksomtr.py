@@ -10,6 +10,7 @@ import pandas as pd
 from tqdm import tqdm
 
 import matplotlib.pyplot as plt
+import matplotlib.transforms as mtransforms
 from matplotlib.patches import RegularPolygon, Ellipse
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import cm, colorbar
@@ -393,15 +394,22 @@ def som_plot(som,
         for j in range(weights.shape[1]):
             unit_sig = to_highlight is None or (i,j) in to_highlight
             wy = yy[(i, j)] * np.sqrt(3) / 2
-            hex = RegularPolygon((xx[(i, j)], wy),
-                                 numVertices=6,
-                                 radius=0.95 / np.sqrt(3) if unit_sig else 0.70 / np.sqrt(3),
-                                 facecolor=color_map(norm(heatmap[i, j])),
-                                 alpha=0.6 - (int(not unit_sig) * 0.2),
-                                 edgecolor='black' if unit_sig else 'gray')
-                                 #zorder=3 if unit_sig else 1)
-            ax.add_patch(hex)
-            all_hex[(i, j)] = hex
+            cx, cy = xx[(i, j)], wy
+            r = 0.87 / np.sqrt(3) if unit_sig else 0.70 / np.sqrt(3)
+            # Scale X relative to origin, then translate to (cx, cy)
+            hex_trans = (
+                mtransforms.Affine2D().scale(2 / np.sqrt(3), 1.0).translate(cx, cy)
+                + ax.transData
+            )
+            hex_patch = RegularPolygon((0, 0),
+                                       numVertices=6,
+                                       radius=r,
+                                       transform=hex_trans,
+                                       facecolor=color_map(norm(heatmap[i, j])),
+                                       alpha=0.6 - (int(not unit_sig) * 0.2),
+                                       edgecolor='black' if unit_sig else 'gray')
+            ax.add_patch(hex_patch)
+            all_hex[(i, j)] = hex_patch
 
     # Draw Cluster Outer Boundaries
     if cluster_df is not None and not cluster_df.empty:
@@ -421,7 +429,7 @@ def som_plot(som,
                 verts = [(cx + r_union * np.cos(a), cy + r_union * np.sin(a)) for a in angles]
                 polys.append(Polygon(verts))
                 # Unset the edge
-                all_hex[(i, j)].set_edgecolor(None)
+                all_hex[(i, j)].set_edgecolor(None)#"#000000")
 
             if polys:
                 merged = unary_union(polys)
