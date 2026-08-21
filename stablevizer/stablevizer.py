@@ -207,11 +207,14 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
 
         assign = labels.isin(germ_labels).to_frame()
         germ_length = sub[assign['is_germ']]['length']
+        # I want -q 1 to be the same as -q 0
+        lower, upper = sorted([germ_length.quantile(germ_q),
+                               germ_length.quantile(1 - germ_q)])
         germ_spread = pd.Series([_[1],
                                  germ_length.mean(),
                                  germ_length.median(),
-                                 germ_length.quantile(germ_q),
-                                 germ_length.quantile(1 - germ_q)
+                                 lower,
+                                 upper,
                                  ],
                                 index=['hap', 'mean', 'mid', 'lower', 'upper'],
                                 name=_[0])
@@ -305,18 +308,18 @@ def rehaplotype(data):
     #print("Changed {reads_changed} read haplotypes acros {donors_changed}", file=sys.stderr)
     return data
 
-def instability_plot(filt_view, title=None, absolute=False):
+def instability_plot(data, title=None, absolute=False):
     # Instability Plot
     fig, ax = plt.subplots(dpi=180)
 
-    filt_view['tissue'] = filt_view['protocol'].apply(lambda x: PROTOCOLS[x]['tissue_abv'])
+    data['tissue'] = data['protocol'].apply(lambda x: PROTOCOLS[x]['tissue_abv'])
 
-    order = filt_view['donor'].unique()
+    order = data['donor'].unique()
     marker_shapes = ['o', 's', '^', 'D', 'v', 'P', 'X', '*', 'h', '<', '>', 'p']
     # Ensure there's always enough with cycle
     markers = dict(zip(order, itertools.cycle(marker_shapes)))
 
-    p = sb.scatterplot(data=filt_view, x='delta_mid', 
+    p = sb.scatterplot(data=data, x='delta_mid',
                        y='spread', 
                        hue='tissue', 
                        size='vaf', 
@@ -346,8 +349,9 @@ def instability_plot(filt_view, title=None, absolute=False):
     _ = plt.legend(bbox_to_anchor=(1, 1.02), fontsize=8)
     _ = plt.tight_layout()
 
-    counts = filt_view['tissue'].value_counts().to_dict()
-    counts.update(filt_view['donor'].value_counts().to_dict())
+    # Legend (counts)
+    counts = data.groupby(['tissue'])['donor'].nunique().to_dict()
+    counts.update(data.groupby('donor')['tissue'].nunique().to_dict())
     
     header_map = {
         'tissue': 'Tissue (#donor)',
