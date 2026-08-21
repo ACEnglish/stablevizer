@@ -20,10 +20,11 @@ from sklearn.metrics import pairwise_distances
 from stablevizer.protocols import PROTOCOLS
 
 # Custom color palettes
-PROTOCOL_PALETTE = {k:v['color'] for k,v in PROTOCOLS.items()}
-TISSUE_PALETTE = {_['tissue_abv']:_['color'] for _ in PROTOCOLS.values()}
+PROTOCOL_PALETTE = {k: v['color'] for k, v in PROTOCOLS.items()}
+TISSUE_PALETTE = {_['tissue_abv']: _['color'] for _ in PROTOCOLS.values()}
 HAP_PALETTE = dict(zip([0, 1, 2], sb.color_palette("Set2", 3)))
 THIRD_PALETTE = {False: 'gray', True: 'black'}
+
 
 def parse_args(args):
     parser = argparse.ArgumentParser(prog="stablevizer", description=__doc__,
@@ -41,7 +42,9 @@ def parse_args(args):
     parser.add_argument("-g", "--germ-vaf", type=float, default=0.8,
                         help="Minimum fraction of reads to collect germline cluster (%(default)s)")
     parser.add_argument("-q", "--germ-q", type=float, default=0.05,
-                        help="Germline length interval for filtering haplotagging errors (%(default)s)")
+                        help="Germline length interval [0-1] for masking haplotagging errors (%(default)s)")
+    parser.add_argument("--no-mask", action='store_true',
+                        help="Don't mask potential haplotagging errors (%(default)s)")
     parser.add_argument("--rehaplotype", action="store_true",
                         help="Perform naive kmedoid clustering of readlengths to reassign haplotypes (%(default)s)")
     parser.add_argument("--abs-delta", action="store_true",
@@ -77,7 +80,7 @@ def parse_args(args):
 def locus_viz(data, donor="Sample", third='auto', fig=None, germ=None):
     """
     Make a per-sample 3-panel swarmplots of read length distributions
-    
+
     When `third == 'auto'`, the last panel defaults to `is_{protocol}` where protocol is the most common ~is_germ protocol
     When `third == None`, the last panel is skipped.
     Otherwise, provide a pd.Series with `.name` of e.g. `is_skin` and boolan values for custom third plot
@@ -90,7 +93,7 @@ def locus_viz(data, donor="Sample", third='auto', fig=None, germ=None):
         third = data['protocol'] == most
         third.name = f'is_{most}'
         n_col += 1
-        
+
     if fig is None:
         fig, ax = plt.subplots(ncols=n_col, sharey=True)
     else:
@@ -98,14 +101,14 @@ def locus_viz(data, donor="Sample", third='auto', fig=None, germ=None):
 
     np.random.seed(123)
     sb.stripplot(data=data, x='is_germ', y='length',
-                hue='hap', 
+                 hue='hap',
                  ax=ax[0],
                  palette=HAP_PALETTE,
                  zorder=1)
-    
+
     np.random.seed(123)
     sb.stripplot(data=data, x='is_germ', y='length',
-                hue='protocol',
+                 hue='protocol',
                  ax=ax[1],
                  palette=PROTOCOL_PALETTE,
                  zorder=1)
@@ -114,14 +117,13 @@ def locus_viz(data, donor="Sample", third='auto', fig=None, germ=None):
     np.random.seed(123)
     if third is not None:
         sb.stripplot(data=data, x='is_germ', y='length',
-                     hue=third, 
-                     ax=ax[2], 
+                     hue=third,
+                     ax=ax[2],
                      palette=THIRD_PALETTE,
                      zorder=1,
                      dodge=True,
                      hue_order=[False, True])
     fig.suptitle(f'{donor} TR View')
-
 
     if germ is not None:
         for i in ax:
@@ -132,7 +134,8 @@ def locus_viz(data, donor="Sample", third='auto', fig=None, germ=None):
 
     return (fig, ax)
 
-def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absolute=False):
+
+def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absolute=False, fix_haps=True):
     """
     Updated data in place with new columns of:
       - `is_germ` boolean if the read is germline
@@ -152,45 +155,49 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
     result_parts = []
     germ_parts = []
     summary = []
-    print(f"Clustering {len(data):,} reads across {data['donor'].nunique()} donors", file=sys.stderr)
+    print(
+        f"Clustering {len(data):,} reads across {data['donor'].nunique()} donors", file=sys.stderr)
     for _, sub in tqdm(data.groupby(['donor', 'hap'])):
-        X = sub['length'].values.reshape((-1,1))
+        X = sub['length'].values.reshape((-1, 1))
 
         # No cluster variability
         if len(X) == 1 or X.std() == 0:
             continue
-            
+
         # Was playing with something
-        #centers = sub.groupby('hap')['length'].describe().sort_values(by='mean')
-        #if len(centers) > 2 and 1 in centers.index and 2 in centers.index:
+        # centers = sub.groupby('hap')['length'].describe().sort_values(by='mean')
+        # if len(centers) > 2 and 1 in centers.index and 2 in centers.index:
         #    lower = centers[centers.index != 0].iloc[0]['75%']
         #    upper = centers[centers.index != 0].iloc[1]['25%']
         #    bw = (upper - lower - 2) / 2
-        #if bw is None or bw < 0:
-        
-        bw = max(estimate_bandwidth(X, quantile=0.3, n_samples=500), min_bandwidth)
-            
+        # if bw is None or bw < 0:
+
+        bw = max(estimate_bandwidth(
+            X, quantile=0.3, n_samples=500), min_bandwidth)
+
         m = MeanShift(bandwidth=bw).fit(X)
         labels = pd.Series(m.labels_, name='is_germ', index=sub.index)
         clusters = labels.value_counts()
         clusters.name = 'read_count'
         clusters = clusters.to_frame()
-        
+
         germ_centroids = sub.groupby(['hap'])['length'].mean().values
-        dists = np.abs(m.cluster_centers_.ravel()[:, None] - germ_centroids[None, :])
+        dists = np.abs(m.cluster_centers_.ravel()[
+                       :, None] - germ_centroids[None, :])
         clusters['distance'] = dists.min(axis=1)
 
         # Rank based sorting
         clusters['read_rank'] = clusters['read_count'].rank(ascending=False)
         clusters['dist_rank'] = clusters['distance'].rank(ascending=True)
-        clusters['combined_rank'] = clusters[['read_rank', 'dist_rank']].sum(axis=1)
+        clusters['combined_rank'] = clusters[[
+            'read_rank', 'dist_rank']].sum(axis=1)
         clusters.sort_values(by='combined_rank', inplace=True)
-        
+
         tot_reads = len(sub)
         assigned_reads = 0
         n_germ = - 1
         germ_labels = []
-        
+
         clusters.sort_values(by='distance', inplace=True)
         while n_germ < len(clusters) and assigned_reads / tot_reads < germ_vaf:
             n_germ += 1
@@ -202,7 +209,7 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
                         len(clusters),
                         len(germ_labels),
                         assigned_reads,
-                        tot_reads, 
+                        tot_reads,
                         bw])
 
         assign = labels.isin(germ_labels).to_frame()
@@ -223,23 +230,27 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
         germ_spread['hap'] = _[1]
         result_parts.append(assign)
         germ_parts.append(germ_spread)
-        
-    summary = pd.DataFrame(summary, columns=['donor', 'hap', 'nclust', 'ngerm', 'nassign', 'total', 'bandwidth'])
+
+    summary = pd.DataFrame(summary, columns=[
+                           'donor', 'hap', 'nclust', 'ngerm', 'nassign', 'total', 'bandwidth'])
     summary['pct_germ'] = summary['nassign'] / summary['total']
 
     result = pd.concat(result_parts)
     germ = pd.DataFrame(germ_parts).round().astype(int)
     germ.index.name = 'donor'
     data = data.join(result)
-    data['is_germ'] = data['is_germ'].infer_objects(copy=False).fillna(True).astype(bool)
-    
-    fix_soma_haplotypes(data, germ)
+    data['is_germ'] = data['is_germ'].infer_objects(
+        copy=False).fillna(True).astype(bool)
+
+    if fix_haps:
+        fix_soma_haplotypes(data, germ)
 
     data['delta'] = data['length'] - data['germ_length']
     if absolute:
         data['delta'] = data['delta'].abs()
 
     return data, summary, germ
+
 
 def fix_soma_haplotypes(data, germ_lookup):
     """
@@ -270,14 +281,17 @@ def fix_soma_haplotypes(data, germ_lookup):
         for _, spread in donor_lookup.iterrows():
             if spread['hap'] == 0:
                 continue
-            change |= to_check['length'].between(spread['lower'], spread['upper'])
+            change |= to_check['length'].between(
+                spread['lower'], spread['upper'])
 
         if not change.any():
             continue
 
-        to_check['hap'] = to_check['hap'].where(~change, to_check['hap'] % 2 + 1)
+        to_check['hap'] = to_check['hap'].where(
+            ~change, to_check['hap'] % 2 + 1)
         to_check['is_germ'] = change
-        to_check['germ_length'] = to_check['hap'].map(donor_lookup.set_index('hap')['mid'])
+        to_check['germ_length'] = to_check['hap'].map(
+            donor_lookup.set_index('hap')['mid'])
 
         data.loc[to_check.index, ['is_germ', 'hap', 'germ_length']] = (
             to_check[['is_germ', 'hap', 'germ_length']]
@@ -286,7 +300,8 @@ def fix_soma_haplotypes(data, germ_lookup):
         read_cnt += change.sum()
         donor_cnt += 1
 
-    print(f"Masked {read_cnt} oddly haplotyped reads in {donor_cnt} donors within germ-q", file=sys.stderr)
+    print(
+        f"Masked {read_cnt} oddly haplotyped reads in {donor_cnt} donors within germ-q", file=sys.stderr)
 
 
 def rehaplotype(data):
@@ -294,35 +309,38 @@ def rehaplotype(data):
     rehaplotype based on length
     """
     print("Rehaplotyping", file=sys.stderr)
-    #reads_changed = 0
-    #donors_changed = 0
+    # reads_changed = 0
+    # donors_changed = 0
     for _, sub in tqdm(data.groupby(['donor'])):
         dist = pairwise_distances(sub['length'].values.reshape((-1, 1)))
         med = kmedoids.KMedoids(2).fit(dist).labels_ + 1
         # Doesn't work - because there's no 1/2 matching
-        #t = (sub['hap'] != med).sum()
-        #reads_changed += t
-        #if t:
-            #donors_changed += 1
+        # t = (sub['hap'] != med).sum()
+        # reads_changed += t
+        # if t:
+        # donors_changed += 1
         data.loc[sub.index, 'hap'] = med
-    #print("Changed {reads_changed} read haplotypes acros {donors_changed}", file=sys.stderr)
+    # print("Changed {reads_changed} read haplotypes acros {donors_changed}", file=sys.stderr)
     return data
+
 
 def instability_plot(data, title=None, absolute=False):
     # Instability Plot
     fig, ax = plt.subplots(dpi=180)
 
-    data['tissue'] = data['protocol'].apply(lambda x: PROTOCOLS[x]['tissue_abv'])
+    data['tissue'] = data['protocol'].apply(
+        lambda x: PROTOCOLS[x]['tissue_abv'])
 
     order = data['donor'].unique()
-    marker_shapes = ['o', 's', '^', 'D', 'v', 'P', 'X', '*', 'h', '<', '>', 'p']
+    marker_shapes = ['o', 's', '^', 'D', 'v',
+                     'P', 'X', '*', 'h', '<', '>', 'p']
     # Ensure there's always enough with cycle
     markers = dict(zip(order, itertools.cycle(marker_shapes)))
 
     p = sb.scatterplot(data=data, x='delta_mid',
-                       y='spread', 
-                       hue='tissue', 
-                       size='vaf', 
+                       y='spread',
+                       hue='tissue',
+                       size='vaf',
                        style='donor',
                        markers=markers,
                        palette=TISSUE_PALETTE,
@@ -347,12 +365,11 @@ def instability_plot(data, title=None, absolute=False):
           title=title)
     plt.grid(zorder=1)
     _ = plt.legend(bbox_to_anchor=(1, 1.02), fontsize=8)
-    _ = plt.tight_layout()
 
     # Legend (counts)
     counts = data.groupby(['tissue'])['donor'].nunique().to_dict()
     counts.update(data.groupby('donor')['tissue'].nunique().to_dict())
-    
+
     header_map = {
         'tissue': 'Tissue (#donor)',
         'donor': 'Donor (#tissue)',
@@ -366,7 +383,7 @@ def instability_plot(data, title=None, absolute=False):
             text.set_weight('bold')
         elif label in counts:
             text.set_text(f"{label} ({counts[label]})")
-    
+
     return fig
 
 
@@ -385,7 +402,7 @@ def run_stablevizer(args):
         if not i in avail_donor:
             print(f"--detail {i} not in args.in_tsv")
             all_good = False
-            
+
     if not all_good:
         print("Fix input / args", file=sys.stderr)
         sys.exit(1)
@@ -394,7 +411,7 @@ def run_stablevizer(args):
         s = args.subset.split(',')
         print(f"Subsetting to {len(s)} donors", file=sys.stderr)
         data.drop(data.index[~data['donor'].isin(s)], inplace=True)
-    
+
     if not len(data):
         print("No reads to cluster!!!", file=sys.stderr)
         exit(1)
@@ -404,22 +421,25 @@ def run_stablevizer(args):
     else:
         unphased = data['hap'] == 0
         pct = (unphased.mean() * 100)
-        print(f"Dropping {unphased.sum()} ({pct:.1f}%) unphased reads", file=sys.stderr)
+        print(
+            f"Dropping {unphased.sum()} ({pct:.1f}%) unphased reads", file=sys.stderr)
         data.drop(data.index[unphased], inplace=True)
 
     data, clusters, germ = perform_clustering(data,
                                               min_bandwidth=args.min_bandwidth,
                                               germ_vaf=args.germ_vaf,
                                               germ_q=args.germ_q,
-                                              absolute=args.abs_delta)
-    
+                                              absolute=args.abs_delta,
+                                              fix_haps=not args.no_mask)
+
     idx = ['donor', 'hap']
     a = clusters.set_index(idx)
     b = germ.reset_index().set_index(idx)
     out = a.join(b)
     out.to_csv(f'{args.output}.germline.tsv', sep='\t')
     if args.save_reads:
-        data.to_csv(f'{args.output}.anno_reads.tsv', sep='\t', index=False, float_format="%.1f")
+        data.to_csv(f'{args.output}.anno_reads.tsv', sep='\t',
+                    index=False, float_format="%.1f")
 
     # We want at least a few non-germline reads per-donor - and for now we'll ignore hap=0 clusters
     m_filt = ~data['is_germ']
@@ -427,7 +447,7 @@ def run_stablevizer(args):
     keep_donors = alt_coverage[alt_coverage >= args.min_reads_donor].index
     keep_donors = set(keep_donors)
 
-    # Now we want to group the reads within donor by tissue 
+    # Now we want to group the reads within donor by tissue
     # You could be more clever here. Instead of all reads, we should give an opportunity
     # for each haplotype to have the instability.
     # This opens the door for potential reassignment of reads to the other haplotype
@@ -448,7 +468,8 @@ def run_stablevizer(args):
         alt_reads],
         axis=1)
 
-    view.columns = ['delta_min', 'delta_mean', 'delta_mid', 'delta_max', 'spread', 'alt_reads']
+    view.columns = ['delta_min', 'delta_mean', 'delta_mid',
+                    'delta_max', 'spread', 'alt_reads']
 
     # Record the per-protocol coverage for calculating VAF
     tot_reads = data.groupby(['donor', 'protocol', 'hap']).size()
@@ -459,37 +480,45 @@ def run_stablevizer(args):
     view['vaf'] = (view['alt_reads'] / view['coverage']).round(4)
 
     # Now subset to only donor/tissue with minimum somatic read support
-    mask = (view['alt_reads'] >= args.min_reads_tissue) # & (view['mean'] > 20)
+    # & (view['mean'] > 20)
+    mask = (view['alt_reads'] >= args.min_reads_tissue)
     filt_view = view[mask].copy()
     # Filtered Summary TSV
-    print(f"Identified {filt_view['donor'].nunique()} donor / {filt_view['protocol'].nunique()} protocols with instability", file=sys.stderr)
+    print((f"Identified {filt_view['donor'].nunique()} donor /"
+           f"{filt_view['protocol'].nunique()} protocols with instability"),
+           file=sys.stderr)
     filt_view.to_csv(f"{args.output}.unstable.tsv", sep='\t', index=False)
-    
+
     if len(filt_view):
         m_fig = instability_plot(filt_view, args.title, args.abs_delta)
         fmt = 'pdf' if args.pdf else 'png'
         plt.rcParams['pdf.fonttype'] = 42
-        m_fig.savefig(f'{args.output}.instability.{fmt}', format=fmt, bbox_inches='tight')
+        m_fig.savefig(f'{args.output}.instability.{fmt}',
+                      format=fmt, bbox_inches='tight')
     else:
         print(f"No instability detected. Skipping main plot", file=sys.stderr)
-    
+
     if args.detail:
         print(f"Detailing {len(args.detail)} donors' TR", file=sys.stderr)
         avail_donors = data['donor'].unique()
         for donor in args.detail:
             if not donor in avail_donors:
-                print(f"Donor {donor} not in reads. Cannot plot `--detail`", file=sys.stderr)
+                print(f"Donor {donor} not in reads. Cannot plot `--detail`",
+                      file=sys.stderr)
                 continue
-            m_fig, _ = locus_viz(data[data['donor'] == donor], donor, germ=germ.loc[[donor]])
-            m_fig.savefig(f"{args.output}.{donor}_detail.png", bbox_inches='tight')
-    
+            m_fig, _ = locus_viz(
+                data[data['donor'] == donor], donor, germ=germ.loc[[donor]])
+            m_fig.savefig(f"{args.output}.{donor}_detail.png",
+                          bbox_inches='tight')
+
     if not (args.all_detail or args.ALL_detail):
         sys.exit(0)
-    
+
     has_soma = filt_view['donor'].unique()
     uniq_donor = has_soma if args.all_detail else data['donor'].unique()
-    print(f"Making all detail plot for {len(uniq_donor)} donors", file=sys.stderr)
-    side  = int(np.ceil(np.sqrt(uniq_donor.size)))
+    print(f"Making all detail plot for {len(uniq_donor)} donors",
+          file=sys.stderr)
+    side = int(np.ceil(np.sqrt(uniq_donor.size)))
 
     parent_fig = plt.figure(figsize=(8 * side, 4 * side))
     subfigs = parent_fig.subfigures(side, side)
@@ -499,4 +528,5 @@ def run_stablevizer(args):
         sub = data[data['donor'] == donor]
         locus_viz(sub, donor, third=third, fig=subfig, germ=germ.loc[[donor]])
 
-    parent_fig.savefig(f"{args.output}.all_donor_detail.png", bbox_inches='tight')
+    parent_fig.savefig(f"{args.output}.all_donor_detail.png",
+                       bbox_inches='tight')
