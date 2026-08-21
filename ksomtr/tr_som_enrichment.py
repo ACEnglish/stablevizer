@@ -188,7 +188,7 @@ def som_test(all_count, sub_count, som, ALPHA=0.05, R=2000, CLUSTER_FORMING_ALPH
     print(f"# Tier 2: topology-aware cluster enrichment (cluster-forming p < {CLUSTER_FORMING_ALPHA})")
     if not cluster_rows:
         print("# No units passed the cluster-forming threshold - no candidate regions to test.")
-        return result_t1, None
+        return None
 
     cluster_df = pd.DataFrame(cluster_rows).sort_values(['cluster_pval', 'cluster_id'])
 

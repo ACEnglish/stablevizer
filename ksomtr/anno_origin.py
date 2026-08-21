@@ -7,7 +7,7 @@ import pandas as pd
 from smahtkit import ReadCounts, SMaHTid
 from smahtkit.origin import annotate_origin
 
-MINSUP = 2
+MINSUP = 3
 reads = pd.read_csv(sys.argv[1], sep='\t')
 
 read_parts = []

@@ -468,8 +468,11 @@ if __name__ == "__main__":
         reads['donor'] = reads['sample'].apply(lambda x: x.donor)
         reads['tissue'] = reads['sample'].apply(lambda x: x.tissue_abv)
         # Use unstable to figure out which samples to actually deal with
-        other = os.path.join(os.path.dirname(fn), "output.unstable.tsv")
+        prefix = '.'.join(os.path.basename(fn).split('.')[:-2])
+        other = os.path.join(os.path.dirname(fn), f"{prefix}.unstable.tsv")
         other = pd.read_csv(other, sep='\t')
+        if other.empty:
+            continue
         other['tissue'] = other['protocol'].apply(lambda x: sk.smhtid.PROTOCOLS[x]['tissue_abv'])
 
         other['mag'] = ((other['delta_mid']**2 + other['spread']**2) ** 0.5) * other['vaf']
@@ -494,4 +497,5 @@ if __name__ == "__main__":
         tree, obs, weight_col="weight", core_col='tissue', donor_agg='max', lam_default=0.5,
         penalty_mode='linear'
     )
-    summary_weighted_norm.to_csv("tissue_classifier.tsv", sep='\t', index=False)
+    if summary_weighted_norm is not None:
+        summary_weighted_norm.to_csv("tissue_classifier.tsv", sep='\t', index=False)
