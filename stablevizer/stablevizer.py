@@ -100,29 +100,35 @@ def locus_viz(data, donor="Sample", third='auto', fig=None, germ=None):
         ax = fig.subplots(ncols=n_col, sharey=True)
 
     np.random.seed(123)
-    sb.stripplot(data=data, x='is_germ', y='length',
+    p = sb.stripplot(data=data, x='is_germ', y='length',
                  hue='hap',
                  ax=ax[0],
                  palette=HAP_PALETTE,
+                 order=[True, False],
                  zorder=1)
+    p.set(xlabel="Is germline", ylabel="Read Length")
 
     np.random.seed(123)
-    sb.stripplot(data=data, x='is_germ', y='length',
+    p = sb.stripplot(data=data, x='is_germ', y='length',
                  hue='protocol',
                  ax=ax[1],
                  palette=PROTOCOL_PALETTE,
+                 order=[True, False],
                  zorder=1)
+    p.set(xlabel="Is germline")
     ax[1].legend().remove()
 
     np.random.seed(123)
     if third is not None:
-        sb.stripplot(data=data, x='is_germ', y='length',
+        p = sb.stripplot(data=data, x='is_germ', y='length',
                      hue=third,
                      ax=ax[2],
                      palette=THIRD_PALETTE,
                      zorder=1,
                      dodge=True,
+                     order=[True, False],
                      hue_order=[False, True])
+        p.set(xlabel="Is germline")
     fig.suptitle(f'{donor} TR View')
 
     if germ is not None:
@@ -373,7 +379,7 @@ def instability_plot(data, title=None, absolute=False):
     header_map = {
         'tissue': 'Tissue (#donor)',
         'donor': 'Donor (#tissue)',
-        'vaf': 'VAF'
+        'vaf': 'hVAF'
     }
 
     for text in p.legend_.get_texts():
