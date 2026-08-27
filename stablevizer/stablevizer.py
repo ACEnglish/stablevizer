@@ -178,8 +178,8 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
         #    bw = (upper - lower - 2) / 2
         # if bw is None or bw < 0:
 
-        bw = max(estimate_bandwidth(
-            X, quantile=0.3, n_samples=500), min_bandwidth)
+        bw = max(estimate_bandwidth(X, quantile=0.3, n_samples=500),
+                 min_bandwidth)
 
         m = MeanShift(bandwidth=bw).fit(X)
         labels = pd.Series(m.labels_, name='is_germ', index=sub.index)
