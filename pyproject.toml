@@ -7,11 +7,11 @@ name = "stablevizer"
 authors = [
     {name = "ACEnglish", email="acenglish@gmail.com"}
 ]
-description = "TR instability visualization tool"
+description = "TR instability visualization tools"
 readme = "README.md"
 license = { text = "MIT" }
 version = "0.0.1"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 dependencies = [
     "kmedoids>=0.5.5",
     "numpy>=1.24.4",
@@ -24,10 +24,12 @@ dependencies = [
 
 [project.scripts]
 stablevizer = "stablevizer.__main__:main"
+ksomtr = "ksomtr.__main__:main"
+smhtid = "smhtid.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/ACEnglish/stablevizer"
 Issues = "https://github.com/ACEnglish/stablevizer"
 
-[tool.setuptools]
-packages = ["stablevizer"]
+[tool.setuptools.packages.find]
+where = ["src"]
