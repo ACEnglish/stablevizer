@@ -147,7 +147,7 @@ def plot_som(args):
                         help="Figure title (%(default)s)")
     parser.add_argument("-T", "--bar-title", default=None,
                         help="Color bar title (default `--metric`))")
-    parser.add_argument("--metric", default="count", choices=['count', 'mean', 'sum', 'median'],
+    parser.add_argument("--metric", default="count", choices=['count', 'mean', 'sum', 'median', 'max', 'q25', 'q75'],
                         help="Default heatmap count, with other choices, expect sixth column")
     parser.add_argument("-e", "--enrichment", default=None,
                         help="Enrichment test result")
@@ -166,6 +166,11 @@ def plot_som(args):
 
     if args.enrichment:
         args.enrichment = pd.read_csv(args.enrichment, sep='\t')
+    
+    if args.metric == 'q25':
+        args.metric = lambda x: x.quantile(0.25)
+    elif args.metric == 'q75':
+        args.metric = lambda x: x.quantile(0.75)
 
     som = pickle.load(open(args.som, 'rb'))
 
