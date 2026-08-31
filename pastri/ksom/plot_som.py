@@ -24,7 +24,7 @@ def som_plot(som,
              heatmap_label="UMatrix",
              color_map=cm.Blues,
              norm=None,
-             cluster_df=None):
+             enrichment_df=None):
     """
     Main plotting function of SOM
     """
@@ -42,8 +42,8 @@ def som_plot(som,
 
     ax.set_aspect('equal')
 
-    if cluster_df is not None and not cluster_df.empty:
-        to_highlight = cluster_df.set_index(['X', 'Y']).index
+    if enrichment_df is not None and not enrichment_df.empty:
+        to_highlight = enrichment_df.set_index(['X', 'Y']).index
     else:
         to_highlight = None
 
@@ -71,13 +71,13 @@ def som_plot(som,
             all_hex[(i, j)] = hex_patch
 
     # Draw Cluster Outer Boundaries
-    if cluster_df is not None and not cluster_df.empty:
-        uniq_clusters = cluster_df['cluster_id'].unique()
+    if enrichment_df is not None and not enrichment_df.empty:
+        uniq_clusters = enrichment_df['cluster_id'].unique()
         r_union = 1.0 / np.sqrt(3)  # Exact radius (no margin gap) to ensure proper polygon union
         # 0.5 for a turn
         angles = np.linspace(0.5, 2 * np.pi + 0.5, 6, endpoint=False)
-        for cluster_id, group in cluster_df.groupby('cluster_id'):
-            if not group['cluster_reject_tier2'].any():
+        for cluster_id, group in enrichment_df.groupby('cluster_id'):
+            if not group['cluster_reject'].any():
                 continue
             polys = []
 
@@ -111,11 +111,8 @@ def som_plot(som,
                                 linestyle='-')
 
 
-    #xrange = np.arange(weights.shape[0])
-    #yrange = np.arange(weights.shape[1])
-
-    plt.xticks([])#xrange, [""] * len(xrange))
-    plt.yticks([])#yrange * np.sqrt(3) / 2, [""] * len(yrange))
+    plt.xticks([])
+    plt.yticks([])
     buff = 0.55
     ax.set_xlim(xx.min() - buff, xx.max() + buff)
     ax.set_ylim(yy.min()*np.sqrt(3)/2 - buff, yy.max()*np.sqrt(3)/2 + buff)
@@ -123,7 +120,7 @@ def som_plot(som,
     # Heatmap
     divider = make_axes_locatable(plt.gca())
     ax_cb = divider.new_horizontal(size="5%", pad=0.05)
-    cb1 = colorbar.ColorbarBase(ax_cb, cmap=color_map, norm=norm,  # <-- pass norm here too
+    cb1 = colorbar.ColorbarBase(ax_cb, cmap=color_map, norm=norm,
                                 orientation='vertical', alpha=.4)
     cb1.ax.get_yaxis().labelpad = 16
     cb1.ax.set_ylabel(heatmap_label,
@@ -152,8 +149,10 @@ def plot_som(args):
                         help="Color bar title (default `--metric`))")
     parser.add_argument("--metric", default="count", choices=['count', 'mean', 'sum', 'median'],
                         help="Default heatmap count, with other choices, expect sixth column")
-    parser.add_argument("--cluster", default=None,
-                        help="som-stat tier2 clustering result")
+    parser.add_argument("-e", "--enrichment", default=None,
+                        help="Enrichment test result")
+    parser.add_argument("--reverse", action="store_true",
+                        help="Reverse color map")
     # `code/laytr/laytr/somplot.py`
     # TODO: Enable XYO Markers
     #parser.add_argument("-X", dtype=str)
@@ -165,8 +164,8 @@ def plot_som(args):
     if args.bar_title is None:
         args.bar_title = args.metric
 
-    if args.cluster:
-        args.cluster = pd.read_csv(args.cluster, sep='\t')
+    if args.enrichment:
+        args.enrichment = pd.read_csv(args.enrichment, sep='\t')
 
     som = pickle.load(open(args.som, 'rb'))
 
@@ -189,8 +188,8 @@ def plot_som(args):
     fig, ax = som_plot(som['som'],
                        heatmap=cells, 
                        heatmap_label=args.bar_title, 
-                       color_map=cm.RdYlBu,
-                       cluster_df=args.cluster)
+                       color_map=cm.RdYlBu_r if args.reverse else cm.RdYlBu,
+                       enrichment_df=args.enrichment)
     fig.suptitle(args.title)
     plt.savefig(args.output)
 

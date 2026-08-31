@@ -69,5 +69,22 @@ pastri ksom plot-som -b <(cut -f1-5,7 out.seqstat.map.bed) \
     -s som.pkl \
     -o hompct.png \
     --metric mean \
-    -T "Homopolymer%", --title "TR Region Homopolymers"
+    -T "Homopolymer%" --title "TR Region Homopolymers"
+```
+
+6. Subset Enrichment Tests
+Test if a subset of TR regions is significantly enriched in a subset of SOM neurons.
+
+```bash
+pastri ksom enrichment -s .som.pkl -n out.map.bed -m subset.map.bed -o subset.test.tsv
+```
+
+Then, visualize the test results against the SOM with
+```bash
+pastri ksom plot-som -b <(cut -f1-5,7 out.seqstat.map.bed) \
+    -s som.pkl \
+    -o Test.png \
+    --enrichment subset.test.tsv \
+    --metric mean \
+    --bar-title "Homopolymer%" --title "Enrichment Test" \
 ```

@@ -82,7 +82,6 @@ def som_test(all_count, sub_count, som, ALPHA=0.05, R=2000, CLUSTER_FORMING_ALPH
 
     print("# Global omnibus - is there enrichment anywhere? : p =", p_global)
 
-
     ###############################################################################
     # Per-unit enrichment - which contexts are significant?
     ###############################################################################
@@ -103,8 +102,16 @@ def som_test(all_count, sub_count, som, ALPHA=0.05, R=2000, CLUSTER_FORMING_ALPH
     qval[valid] = qval_compact
 
     x_all, y_all = np.unravel_index(np.arange(K), shape)
-    # I don't think I need this
-
+    
+    # Record all neurons to join to cluster result later
+    result = pd.DataFrame({
+            'X': x_all,
+            'Y': y_all,
+            'n_count': n,
+            'm_count': m,
+            'enrichment': fold_enrichment,
+            'reject': reject,
+            'qval': qval}).set_index(['X', 'Y'])
     print("# Per-unit enrichment - which contexts are significant?")
     sig = reject.sum()
     present = (m != 0).sum()
@@ -179,10 +186,9 @@ def som_test(all_count, sub_count, som, ALPHA=0.05, R=2000, CLUSTER_FORMING_ALPH
             ux, uy = np.unravel_index(u, shape)
             cluster_rows.append({
                 'cluster_id': cid, 'X': ux, 'Y': uy, 'count': m[u],
-                'unit_pval': pvals[u], 'unit_qval': qval[u], 'unit_reject_tier1': bool(reject[u]),
+                'unit_pval': pvals[u], 'unit_qval': qval[u], 'unit_reject': bool(reject[u]),
                 'cluster_size': len(members), 'cluster_mass': mass,
-                'cluster_pval': p_clust, 'cluster_reject_tier2': p_clust < ALPHA,
-                'fold_enrichment': fold_enrichment[u],
+                'cluster_pval': p_clust, 'cluster_reject': p_clust < ALPHA,
             })
 
     print(f"# Tier 2: topology-aware cluster enrichment (cluster-forming p < {CLUSTER_FORMING_ALPHA})")
@@ -193,14 +199,17 @@ def som_test(all_count, sub_count, som, ALPHA=0.05, R=2000, CLUSTER_FORMING_ALPH
     cluster_df = pd.DataFrame(cluster_rows).sort_values(['cluster_pval', 'cluster_id'])
 
     n_clusters = cluster_df['cluster_id'].nunique()
-    n_sig_clusters = cluster_df.loc[cluster_df['cluster_reject_tier2'], 'cluster_id'].nunique()
-    rescued = cluster_df[cluster_df['cluster_reject_tier2'] & ~cluster_df['unit_reject_tier1']]
+    n_sig_clusters = cluster_df.loc[cluster_df['cluster_reject'], 'cluster_id'].nunique()
+    rescued = cluster_df[cluster_df['cluster_reject'] & ~cluster_df['unit_reject']]
+    
+    cluster_df.set_index(["X", "Y"], inplace=True)
+    result = result.join(cluster_df, how='left')
     print(f"# {n_clusters} candidate region(s), {n_sig_clusters} significant at FWER < {ALPHA}")
     print(f"# {len(rescued)} unit(s) significant via their neighborhood in tier2 but not individually in tier1")
 
-    return cluster_df
+    return result[result['m_count'] != 0]
 
-def main(args):
+def enrichment(args):
     parser = argparse.ArgumentParser(prog="som-test", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("-s", "--som", required=True,
@@ -239,8 +248,8 @@ def main(args):
                         R2=args.R2, 
                         DIST_PRUNE_PERCENTILE=args.dist_prune)
     
-    clusters.to_csv(args.output, sep='\t', index=False, float_format='%.5f')
+    clusters.to_csv(args.output, sep='\t', float_format='%.5f')
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    enrichment(sys.argv[1:])

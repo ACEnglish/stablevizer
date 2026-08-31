@@ -10,7 +10,7 @@ CMDS = [
     'map-bed',
     'seqstat-bed',
     'plot-som',
-    'downsample',
+    'enrichment',
 ]
 
 def main(args):
