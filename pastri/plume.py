@@ -17,7 +17,8 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import MeanShift, estimate_bandwidth
 from sklearn.metrics import pairwise_distances
 
-from stablevizer.protocols import PROTOCOLS
+# TODO: Moved
+from pastri.protocols import PROTOCOLS
 
 # Custom color palettes
 PROTOCOL_PALETTE = {k: v['color'] for k, v in PROTOCOLS.items()}
@@ -25,9 +26,8 @@ TISSUE_PALETTE = {_['tissue_abv']: _['color'] for _ in PROTOCOLS.values()}
 HAP_PALETTE = dict(zip([0, 1, 2], sb.color_palette("Set2", 3)))
 THIRD_PALETTE = {False: 'gray', True: 'black'}
 
-
 def parse_args(args):
-    parser = argparse.ArgumentParser(prog="stablevizer", description=__doc__,
+    parser = argparse.ArgumentParser(prog="plume", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("in_tsv", type=str,
                         help="Read lengths tsv")
