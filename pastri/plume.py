@@ -1,5 +1,5 @@
 """
-Tandem Repeat Instability Describer
+Plume pattern detection Tandem Repeat Instability Describer
 
 Given a tsv of read lenghths, identify donor/tissues with instability and plot.
 """
@@ -331,7 +331,9 @@ def rehaplotype(data):
 
 
 def instability_plot(data, title=None, absolute=False):
-    # Instability Plot
+    """
+    Scatterplot of plume distributions
+    """
     fig, ax = plt.subplots(dpi=180)
 
     data['tissue'] = data['protocol'].apply(
@@ -393,7 +395,7 @@ def instability_plot(data, title=None, absolute=False):
     return fig
 
 
-def run_stablevizer(args):
+def plume_main(args):
     args = parse_args(args)
     data = pd.read_csv(args.in_tsv, sep='\t')
     expected = ['donor', 'protocol', 'hap', 'length']

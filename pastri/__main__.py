@@ -4,7 +4,7 @@ from importlib.metadata import version
 
 import pastri
 from pastri import __version__
-#from pastri.plume import plume_main
+from pastri.plume import plume_main
 #from pastri.plump import plump_main
 from pastri.ksom.__main__ import main as ksom_main
 #from pastri.origin import origin_main
