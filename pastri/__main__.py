@@ -6,9 +6,9 @@ import pastri
 from pastri import __version__
 from pastri.plume import plume_main
 #from pastri.plump import plump_main
-from pastri.ksom.__main__ import main as ksom_main
 #from pastri.origin import origin_main
-#from pastri.smhtid import smhtid_main
+from pastri.ksom.__main__ import main as ksom_main
+from pastri.smahtid import smahtid_main, quick_smahtid_main
 
 def flat_version(args):
     """Print the version"""
@@ -19,11 +19,12 @@ def flat_version(args):
 
 
 TOOLS = {       
-         #"plume": plume_main,
+         "plume": plume_main,
          #"plump": plump_main,
          #"origin": origin_main,
          "ksom": ksom_main,
-         #"smhtid": smhtid_main,
+         "smahtid": smahtid_main,
+         "qsmahtid": quick_smahtid_main,
          #"version": flat_version,
 }
 
@@ -35,7 +36,7 @@ Pastri v{__version__} - Pattern Analysis of Somatic TR Instability
     plump    Analyze plump patterns
     origin   Tissue origin and batch effect tests
     ksom     Kmer based self-organizing map
-    smhtid   SMaHT nomenclature utility
+    smhtid   SMaHT nomenclature deconvolution
     version  Print the vacilla version and exit
 """
 
