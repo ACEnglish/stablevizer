@@ -534,7 +534,10 @@ def plume_main(args):
     for subfig, donor in zip(subfigs.ravel(), sorted(uniq_donor)):
         third = 'auto' if donor in has_soma else None
         sub = data[data['donor'] == donor]
-        locus_viz(sub, donor, third=third, fig=subfig, germ=germ.loc[[donor]])
+        try:
+            locus_viz(sub, donor, third=third, fig=subfig, germ=germ.loc[[donor]])
+        except KeyError:
+            print(f"Skipping all detail for {donor}", file=sys.stderr)
 
     parent_fig.savefig(f"{args.output}.all_donor_detail.png",
                        bbox_inches='tight')

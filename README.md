@@ -1,15 +1,35 @@
 # pastri
-TR instability visualization tool
-
-Documentation pending.
+Pattern Analysis for Somatic Tandem Repeat Instability
 
 Install via
 ```bash
 python3 -m pip install .
 ```
 
-Usage See `stablevizer -h`
+Usage See `pastri -h` for available commands
 
+# Data Setup
+Currently, pastri assumes that all metadata can be tracked through SMaHT nomenclature sample ids. Future release will
+allow definitions of custom donor-tissue-platform-etc fields.
+
+Use `qdpi` to extract read deltas, and optionally sequences, from long read alignments over tandem repeat regions.
+```bash
+Link to qdpi and show an example command
+```
+
+`# TODO`
+Then, use `pastri extract` to pull relevant read information from a set of qdpi files
+```bash
+pastri extract -o output.reads.tsv chrom:start-end *qdpi.bed.gz
+```
+`# TODO also account for sequences which will be important later`
+
+# Plume
+When a central mass of read lengths are clustered around a germline TR length, any remaining
+outlier read lengths are deemed somatic 'plumes'. This pattern can be searched for in a set of reads over a locus with:
+```bash
+pastri plume output.reads.tsv ...
+```
 
 # KSOM
 
@@ -27,16 +47,18 @@ pastri ksom build-kvec -b input.bed -f reference.fa -o kvec.npz
 pastri ksom build-som -o som.pkl -p kvec.npz
 ```
 
-3. Map the kvec to the SOM via
-```bash
-pastri ksom map-kvec -k kvec.npz -s som.pkl -o out.map
-```
-
-It is also possible to directly map bed files to the SOM via:
+3. Map the regions to the SOM via
 ```bash
 pastri ksom map-bed -b input.bed -s som.pkl -o out.map.bed
 ```
 The `out.map.bed` will hold each input bed line's first 3 columns along with two additional `X` and `Y` columns.
+
+It is also possible to directly map kvec files to the SOM via:
+```bash
+pastri ksom map-kvec -k kvec.npz -s som.pkl -o out.map
+```
+However, this doesn't track bed-like locus information, so other infrastructure tracking the kvec indices would be
+needed
 
 4. Plot the SOM
 ```bash

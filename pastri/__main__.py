@@ -4,9 +4,11 @@ from importlib.metadata import version
 
 import pastri
 from pastri import __version__
+from pastri.msa import msa_main
 from pastri.plume import plume_main
 #from pastri.plump import plump_main
-#from pastri.origin import origin_main
+from pastri.origin import origin_main
+from pastri.locus_setup import locus_setup_main
 from pastri.ksom.__main__ import main as ksom_main
 from pastri.smahtid import smahtid_main, quick_smahtid_main
 
@@ -19,9 +21,11 @@ def flat_version(args):
 
 
 TOOLS = {       
+         "tr": locus_setup_main,
          "plume": plume_main,
          #"plump": plump_main,
-         #"origin": origin_main,
+         "origin": origin_main,
+         "msa": msa_main,
          "ksom": ksom_main,
          "smahtid": smahtid_main,
          "qsmahtid": quick_smahtid_main,
