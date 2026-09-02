@@ -61,8 +61,6 @@ def parse_args(args):
                         help="Subset reads to donors (comma separated)")
     parser.add_argument("--pdf", action="store_true",
                         help="Save instability plot as pdf (%(default)s)")
-    parser.add_argument("--save-reads", action="store_true",
-                        help="Save the annotated reads to `.anno_reads.tsv`")
 
     args = parser.parse_args(args)
     if (args.all_detail or args.ALL_detail) and (args.all_detail == args.ALL_detail):
@@ -445,9 +443,7 @@ def plume_main(args):
     b = germ.reset_index().set_index(idx)
     out = a.join(b)
     out.to_csv(f'{args.output}.germline.tsv', sep='\t')
-    if args.save_reads:
-        data.to_csv(f'{args.output}.anno_reads.tsv', sep='\t',
-                    index=False, float_format="%.1f")
+    data.to_csv(f'{args.output}.anno_reads.tsv', sep='\t', index=False, float_format="%.1f")
 
     # We want at least a few non-germline reads per-donor - and for now we'll ignore hap=0 clusters
     m_filt = ~data['is_germ']

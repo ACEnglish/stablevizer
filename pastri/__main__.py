@@ -29,19 +29,19 @@ TOOLS = {
          "ksom": ksom_main,
          "smahtid": smahtid_main,
          "qsmahtid": quick_smahtid_main,
-         #"version": flat_version,
+         "version": flat_version,
 }
 
 USAGE = f"""\
 Pastri v{__version__} - Pattern Analysis of Somatic TR Instability
 
-    tr       Create a project directory for a locus
+    tr       Extract locus info from qdpi
     plume    Analyze plume patterns
     plump    Analyze plump patterns
     origin   Tissue origin and batch effect tests
     ksom     Kmer based self-organizing map
     smhtid   SMaHT nomenclature deconvolution
-    version  Print the vacilla version and exit
+    version  Print the version and exit
 """
 
 def main():
@@ -65,4 +65,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

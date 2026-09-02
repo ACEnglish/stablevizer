@@ -16,20 +16,39 @@ Use `qdpi` to extract read deltas, and optionally sequences, from long read alig
 ```bash
 Link to qdpi and show an example command
 ```
+Give full paths to the sets of files
 
-`# TODO`
-Then, use `pastri extract` to pull relevant read information from a set of qdpi files
 ```bash
-pastri extract -o output.reads.tsv chrom:start-end *qdpi.bed.gz
+ls `pwd`/*.qdpi.bed.gz > qdpi_files.txt
+ls `pwd`/*.fa > fasta_files.txt
 ```
-`# TODO also account for sequences which will be important later`
+
+Then, use `pastri tr` to pull relevant read information from the files for a particular locus
+```bash
+pastri tr -o output.reads.tsv chrom:start-end -q qdpi_files.txt -f fasta_files.txt
+```
 
 # Plume
 When a central mass of read lengths are clustered around a germline TR length, any remaining
 outlier read lengths are deemed somatic 'plumes'. This pattern can be searched for in a set of reads over a locus with:
 ```bash
-pastri plume output.reads.tsv ...
+pastri plume output.reads.tsv -o plume ...
 ```
+
+# Origin
+Origin annotation takes the plume `output.anno_reads.tsv` and searches for the simplest core/tissue/layer origin of the
+non-germline reads. 
+
+```bash
+pastri origin -o origin.tsv plume.anno_reads.tsv
+```
+Documentation due
+
+# MSA
+Documentation due
+
+# Motif
+Documentation due
 
 # KSOM
 
