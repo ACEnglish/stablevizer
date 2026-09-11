@@ -159,8 +159,8 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
     result_parts = []
     germ_parts = []
     summary = []
-    print(
-        f"Clustering {len(data):,} reads across {data['donor'].nunique()} donors", file=sys.stderr)
+    print(f"Clustering {len(data):,} reads across {data['donor'].nunique()} donors",
+          file=sys.stderr)
     for _, sub in tqdm(data.groupby(['donor', 'hap'])):
         X = sub['length'].values.reshape((-1, 1))
 
@@ -185,17 +185,16 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
         clusters.name = 'read_count'
         clusters = clusters.to_frame()
 
+        # No hap?
         germ_centroids = sub.groupby(['hap'])['length'].mean().values
-        dists = np.abs(m.cluster_centers_.ravel()[
-                       :, None] - germ_centroids[None, :])
+        dists = np.abs(m.cluster_centers_.ravel()[:, None] - germ_centroids[None, :])
         clusters['distance'] = dists.min(axis=1)
 
         # Rank based sorting
         clusters['read_rank'] = clusters['read_count'].rank(ascending=False)
         clusters['dist_rank'] = clusters['distance'].rank(ascending=True)
-        clusters['combined_rank'] = clusters[[
-            'read_rank', 'dist_rank']].sum(axis=1)
-        clusters.sort_values(by='combined_rank', inplace=True)
+        #clusters['combined_rank'] = clusters[['read_rank', 'dist_rank']].sum(axis=1)
+        #clusters.sort_values(by='combined_rank', inplace=True)
 
         tot_reads = len(sub)
         assigned_reads = 0
@@ -235,16 +234,16 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
         result_parts.append(assign)
         germ_parts.append(germ_spread)
 
-    summary = pd.DataFrame(summary, columns=[
-                           'donor', 'hap', 'nclust', 'ngerm', 'nassign', 'total', 'bandwidth'])
+    summary = pd.DataFrame(summary, columns=['donor', 'hap', 'nclust', 'ngerm',
+                                             'nassign', 'total', 'bandwidth'])
     summary['pct_germ'] = summary['nassign'] / summary['total']
 
     result = pd.concat(result_parts)
     germ = pd.DataFrame(germ_parts).round().astype(int)
     germ.index.name = 'donor'
     data = data.join(result)
-    data['is_germ'] = data['is_germ'].infer_objects(
-        copy=False).fillna(True).astype(bool)
+    data['is_germ'] = data['is_germ'].infer_objects(copy=False
+                                                    ).fillna(True).astype(bool)
 
     if fix_haps:
         fix_soma_haplotypes(data, germ)
@@ -304,8 +303,8 @@ def fix_soma_haplotypes(data, germ_lookup):
         read_cnt += change.sum()
         donor_cnt += 1
 
-    print(
-        f"Masked {read_cnt} oddly haplotyped reads in {donor_cnt} donors within germ-q", file=sys.stderr)
+    print(f"Masked {read_cnt} oddly haplotyped reads in {donor_cnt} donors within germ-q",
+          file=sys.stderr)
 
 
 def rehaplotype(data):

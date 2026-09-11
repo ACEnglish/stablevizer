@@ -24,6 +24,8 @@ def parse_args(args):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("-f", "--fasta", default=None,
                         help="Fasta file of reads")
+    parser.add_argument("--save-fasta", action="store_true",
+                        help="Save a plain fasta file")
     parser.add_argument("-o", "--output", required=True,
                         help="Output prefix")
     filtsg = parser.add_argument_group("Fasta Subsetting Arguments")
@@ -115,8 +117,16 @@ def msa_main(args):
         all_seqs = sorted(all_seqs, reverse=True, key=lambda x: len(x))
         aln_result = aligner.msa(all_seqs, False, True)
         
+        if args.save_fasta:
+            fa_out = open(f'{args.output}_{values[0]}_{values[1]}_{values[2]}.fasta', 'w')
+
         with open(f'{args.output}_{values[0]}_{values[1]}_{values[2]}.msa', 'w') as fout:
             for name, msa in zip(all_names, aln_result.msa_seq):
-                print(f'>{name}\n{msa}\n', file=fout)
+                print(f'>{name}\n{msa}', file=fout)
+                if args.save_fasta:
+                    print(f'>{name}\n{msa.replace('-','')}', file=fa_out)
+        if args.save_fasta:
+            fa_out.close()
+
 
 
