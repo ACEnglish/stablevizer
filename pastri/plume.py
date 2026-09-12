@@ -17,7 +17,6 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import MeanShift, estimate_bandwidth
 from sklearn.metrics import pairwise_distances
 
-# TODO: Moved
 from pastri.protocols import PROTOCOLS
 
 # Custom color palettes
@@ -185,23 +184,22 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
         clusters.name = 'read_count'
         clusters = clusters.to_frame()
 
-        # No hap?
         germ_centroids = sub.groupby(['hap'])['length'].mean().values
         dists = np.abs(m.cluster_centers_.ravel()[:, None] - germ_centroids[None, :])
         clusters['distance'] = dists.min(axis=1)
+        clusters.sort_values(by='distance', inplace=True)
 
         # Rank based sorting
-        clusters['read_rank'] = clusters['read_count'].rank(ascending=False)
-        clusters['dist_rank'] = clusters['distance'].rank(ascending=True)
+        #clusters['read_rank'] = clusters['read_count'].rank(ascending=False)
+        #clusters['dist_rank'] = clusters['distance'].rank(ascending=True)
         #clusters['combined_rank'] = clusters[['read_rank', 'dist_rank']].sum(axis=1)
         #clusters.sort_values(by='combined_rank', inplace=True)
 
         tot_reads = len(sub)
         assigned_reads = 0
-        n_germ = - 1
+        n_germ = -1
         germ_labels = []
 
-        clusters.sort_values(by='distance', inplace=True)
         while n_germ < len(clusters) and assigned_reads / tot_reads < germ_vaf:
             n_germ += 1
             assigned_reads += clusters.iloc[n_germ]['read_count']
@@ -323,7 +321,7 @@ def rehaplotype(data):
         # if t:
         # donors_changed += 1
         data.loc[sub.index, 'hap'] = med
-    # print("Changed {reads_changed} read haplotypes acros {donors_changed}", file=sys.stderr)
+    # print("Changed {reads_changed} read haplotypes across {donors_changed}", file=sys.stderr)
     return data
 
 
@@ -426,8 +424,8 @@ def plume_main(args):
     else:
         unphased = data['hap'] == 0
         pct = (unphased.mean() * 100)
-        print(
-            f"Dropping {unphased.sum()} ({pct:.1f}%) unphased reads", file=sys.stderr)
+        print(f"Dropping {unphased.sum()} ({pct:.1f}%) unphased reads",
+              file=sys.stderr)
         data.drop(data.index[unphased], inplace=True)
 
     data, clusters, germ = perform_clustering(data,

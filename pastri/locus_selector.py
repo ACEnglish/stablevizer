@@ -1,6 +1,7 @@
 """
 Select loci from QDPI files that show signs of instability
 Assumes inputs have same loci in same order
+Deviating coverage is read deltas > global_median ± spread
 """
 import os
 import sys
@@ -50,7 +51,7 @@ def parse_args(args):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("inputs", type=str, nargs="+",
                         help="Read lengths tsv")
-    parser.add_argument("-o", "--output", default="/dev/stdout",
+    parser.add_argument("-o", "--output", default=None,
                         help="Output loci (stdout)")
     parser.add_argument("-c", "--cov", dtype=int, default=30,
                         help="Minimum haplotype coverage (%(default)s)")
@@ -71,7 +72,7 @@ def selector_main(args):
 
     files = [gzip.open(_) for _ in args.inputs]
     smhtids = [SMaHTid.from_re(os.path.basename(_)) for _ in args.inputs]
-    args.output = open(args.output, 'w')
+    args.output = open(args.output, 'w') if args.output else sys.stdout
     while True:
         # Join each qdpi bed file locus
         try:
