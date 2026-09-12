@@ -1,5 +1,6 @@
 """
 Select loci from QDPI files that show signs of instability
+Assumes inputs have same loci in same order
 """
 import os
 import sys
@@ -21,22 +22,22 @@ def to_int(data):
     return np.fromstring(data, dtype=int, sep=",")
 
 
-def tissue_dev(parts, smhtids, global_median, spread_min, min_alt, min_vaf):
+def tissue_dev(deltas, smhtids, global_median, spread_min, min_alt, min_vaf):
     """
     Consolidate read support by tissue and check if there are at least min_alt reads in the tissue deviating from the
     median and they are above some minimum VAF
     """
     by_tiss = defaultdict(list)
-    for m_id, p in zip(smhtids, parts):
+    for m_id, p in zip(smhtids, deltas):
         if p.size:
             by_tiss[m_id.tissue_abv].append(p)
 
-    for deltas in by_tiss.values():
-        deltas = np.concatenate(deltas) if len(deltas) > 1 else deltas[0]
+    for ds in by_tiss.values():
+        ds = np.concatenate(ds) if len(ds) > 1 else ds[0]
         # How many reads outside bounds
-        d_count = int(((deltas > global_median + spread_min) |
-                       (deltas < global_median - spread_min)).sum())
-        if d_count >= min_alt and (d_count / len(deltas) >= min_vaf):
+        d_count = int(((ds > global_median + spread_min) |
+                       (ds < global_median - spread_min)).sum())
+        if d_count >= min_alt and (d_count / len(ds) >= min_vaf):
             return True  # Only need one to pass
     return False
 
@@ -82,10 +83,10 @@ def selector_main(args):
         h1_parts = []
         h2_parts = []
         for line in lines:
-            fields = line.strip().split('\t')
-            locus = fields[:3]
-            h1_parts.append(to_int(fields[5]))
-            h2_parts.append(to_int(fields[6]))
+            data = line.strip().split('\t')
+            locus = data[:3]
+            h1_parts.append(to_int(data[5]))
+            h2_parts.append(to_int(data[6]))
 
         for parts in [h1_parts, h2_parts]:
             h = np.concatenate(parts) if len(parts) > 1 else parts[0]
