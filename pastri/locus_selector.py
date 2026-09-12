@@ -21,7 +21,7 @@ def to_int(data):
     return np.fromstring(data, dtype=int, sep=",")
 
 
-def by_tissue_vaf_check(parts, smhtids, global_median, spread_min, min_alt, min_vaf):
+def tissue_dev(parts, smhtids, global_median, spread_min, min_alt, min_vaf):
     """
     Consolidate read support by tissue and check if there are at least min_alt reads in the tissue deviating from the
     median and they are above some minimum VAF
@@ -31,7 +31,7 @@ def by_tissue_vaf_check(parts, smhtids, global_median, spread_min, min_alt, min_
         if p.size:
             by_tiss[m_id.tissue_abv].append(p)
 
-    for deltas in separated.values():
+    for deltas in by_tiss.values():
         deltas = np.concatenate(deltas) if len(deltas) > 1 else deltas[0]
         # How many reads outside bounds
         d_count = int(((deltas > global_median + spread_min) |
@@ -83,11 +83,10 @@ def selector_main(args):
         h2_parts = []
         for line in lines:
             fields = line.strip().split('\t')
-            locus, d1, d2 = fields[:3], to_int(fields[5]), to_int(fields[6])
-            h1_parts.append(d1)
-            h2_parts.append(d2)
+            locus = fields[:3]
+            h1_parts.append(to_int(fields[5]))
+            h2_parts.append(to_int(fields[6]))
 
-        passing = False
         for parts in [h1_parts, h2_parts]:
             h = np.concatenate(parts) if len(parts) > 1 else parts[0]
             # Sufficiently covered overall
@@ -99,12 +98,11 @@ def selector_main(args):
                 continue
 
             # Minimum deviating coverage and minimum VAF of that deviating coverage
-            if not by_tissue_vaf_check(parts, smhtids, np.median(h), args.spread, args.alt, args.vaf):
+            if not tissue_dev(parts, smhtids, np.median(h), args.spread, args.alt, args.vaf):
                 continue
 
-            passing = True
-            break # Only need one to pass
-
-        if passing:
+            # Only need one to pass
             print(*locus, sep='\t', file=args.output)
+            break
+
     args.output.close()
