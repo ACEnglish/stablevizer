@@ -9,6 +9,7 @@ from pastri.plume import plume_main
 #from pastri.plump import plump_main
 from pastri.origin import origin_main
 from pastri.locus_setup import locus_setup_main
+from pastri.locus_selector import selector_main
 from pastri.ksom.__main__ import main as ksom_main
 from pastri.smahtid import smahtid_main, quick_smahtid_main
 
@@ -21,6 +22,7 @@ def flat_version(args):
 
 
 TOOLS = {       
+         "select": selector_main,
          "tr": locus_setup_main,
          "plume": plume_main,
          #"plump": plump_main,
