@@ -4,13 +4,12 @@ Select loci from QDPI files that show signs of instability
 import os
 import sys
 import gzip
-from collections import defaultdict
 import argparse
+from collections import defaultdict
 
 import numpy as np
 from pastri import SMaHTid
 
-# Should parameterize
 EMPTY = np.array([], dtype=int)
 
 def to_int(data):
@@ -29,15 +28,14 @@ def by_tissue_vaf_check(parts, smhtids, global_median, spread_min, min_alt, min_
     """
     by_tiss = defaultdict(list)
     for m_id, p in zip(smhtids, parts):
-        if not p.size:
-            continue
-        by_tiss[m_id.tissue_abv].append(p)
+        if p.size:
+            by_tiss[m_id.tissue_abv].append(p)
 
     for deltas in separated.values():
         deltas = np.concatenate(deltas) if len(deltas) > 1 else deltas[0]
         # How many reads outside bounds
         d_count = int(((deltas > global_median + spread_min) |
-                      (deltas < globa_median - spread_min)).sum())
+                       (deltas < global_median - spread_min)).sum())
         if d_count >= min_alt and (d_count / len(deltas) >= min_vaf):
             return True  # Only need one to pass
     return False
@@ -64,11 +62,15 @@ def parse_args(args):
     return parser.parse_args(args)
 
 
-if __name__ == '__main__':
-    args = parse_args(sys.argv[1:])
+def selector_main(args):
+    """
+    Main
+    """
+    args = parse_args(args)
 
     files = [gzip.open(_) for _ in args.inputs]
     smhtids = [SMaHTid.from_re(os.path.basename(_)) for _ in args.inputs]
+    args.output = open(args.output, 'w')
     while True:
         # Join each qdpi bed file locus
         try:
@@ -81,7 +83,6 @@ if __name__ == '__main__':
         h2_parts = []
         for line in lines:
             fields = line.strip().split('\t')
-            # chromstartend, h1, h2
             locus, d1, d2 = fields[:3], to_int(fields[5]), to_int(fields[6])
             h1_parts.append(d1)
             h2_parts.append(d2)
@@ -102,9 +103,8 @@ if __name__ == '__main__':
                 continue
 
             passing = True
-            break  # Only need one to pass
+            break # Only need one to pass
 
-        if not passing:
-            continue
-
-        print(*locus, sep='\t')
+        if passing:
+            print(*locus, sep='\t', file=args.output)
+    args.output.close()
