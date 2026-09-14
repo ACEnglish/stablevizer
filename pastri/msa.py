@@ -108,13 +108,13 @@ def msa_main(args):
         if args.cross_haplotype:
             values.insert(2, 'all')
 
-        all_names = []
         all_seqs = []
         for e_name in sub['entry']:
-            all_names.append(e_name)
-            all_seqs.append(fasta.fetch(e_name))
+            all_seqs.append((e_name, fasta.fetch(e_name)))
 
-        all_seqs = sorted(all_seqs, reverse=True, key=lambda x: len(x))
+        all_seqs = sorted(all_seqs, reverse=True, key=lambda x: len(x[1]))
+        all_names, all_seqs = map(list, zip(*all_seqs))
+
         aln_result = aligner.msa(all_seqs, False, True)
         
         if args.save_fasta:

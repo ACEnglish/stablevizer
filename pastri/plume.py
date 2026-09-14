@@ -485,7 +485,7 @@ def plume_main(args):
     mask = (view['alt_reads'] >= args.min_reads_tissue)
     filt_view = view[mask].copy()
     # Filtered Summary TSV
-    print((f"Identified {filt_view['donor'].nunique()} donor /"
+    print((f"Identified {filt_view['donor'].nunique()} donor / "
            f"{filt_view['protocol'].nunique()} protocols with instability"),
            file=sys.stderr)
     filt_view.to_csv(f"{args.output}.unstable.tsv", sep='\t', index=False)
