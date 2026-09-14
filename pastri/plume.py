@@ -37,7 +37,7 @@ def parse_args(args):
     parser.add_argument("-R", "--min-reads-tissue", type=int, default=3,
                         help="Minimum number of non-germ reads required in tissue (%(default)s)")
     parser.add_argument("-b", "--min-bandwidth", type=int, default=10,
-                        help="Minimum MeanShift clustering bandwidth ($(default)s)")
+                        help="Minimum MeanShift clustering bandwidth (%(default)s)")
     parser.add_argument("-g", "--germ-vaf", type=float, default=0.8,
                         help="Minimum fraction of reads to collect germline cluster (%(default)s)")
     parser.add_argument("-q", "--germ-q", type=float, default=0.05,

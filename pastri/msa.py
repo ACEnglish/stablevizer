@@ -124,7 +124,7 @@ def msa_main(args):
             for name, msa in zip(all_names, aln_result.msa_seq):
                 print(f'>{name}\n{msa}', file=fout)
                 if args.save_fasta:
-                    print(f'>{name}\n{msa.replace('-','')}', file=fa_out)
+                    print(f">{name}\n{msa.replace('-','')}", file=fa_out)
         if args.save_fasta:
             fa_out.close()
 
