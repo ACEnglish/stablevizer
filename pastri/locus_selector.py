@@ -11,6 +11,7 @@ from collections import defaultdict
 
 import numpy as np
 from pastri import SMaHTid
+from pastri.qdpi_io import stream_qdpi
 
 EMPTY = np.array([], dtype=int)
 
@@ -70,25 +71,9 @@ def selector_main(args):
     """
     args = parse_args(args)
 
-    files = [gzip.open(_) for _ in args.inputs]
     smhtids = [SMaHTid.from_re(os.path.basename(_)) for _ in args.inputs]
     args.output = open(args.output, 'w') if args.output else sys.stdout
-    while True:
-        # Join each qdpi bed file locus
-        try:
-            lines = [next(_).decode() for _ in files]
-        except StopIteration:
-            break
-
-        locus = None
-        h1_parts = []
-        h2_parts = []
-        for line in lines:
-            data = line.strip().split('\t')
-            locus = data[:3]
-            h1_parts.append(to_int(data[5]))
-            h2_parts.append(to_int(data[6]))
-
+    for locus, h1_parts, h2_parts in stream_qdpi(args.inputs):
         for parts in [h1_parts, h2_parts]:
             h = np.concatenate(parts) if len(parts) > 1 else parts[0]
             # Sufficiently covered overall

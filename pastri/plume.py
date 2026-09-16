@@ -138,7 +138,7 @@ def locus_viz(data, donor="Sample", third='auto', fig=None, germ=None):
     return (fig, ax)
 
 
-def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absolute=False, fix_haps=True):
+def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absolute=False, fix_haps=True, logging=True):
     """
     Updated data in place with new columns of:
       - `is_germ` boolean if the read is germline
@@ -158,9 +158,13 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
     result_parts = []
     germ_parts = []
     summary = []
-    print(f"Clustering {len(data):,} reads across {data['donor'].nunique()} donors",
-          file=sys.stderr)
-    for _, sub in tqdm(data.groupby(['donor', 'hap'])):
+    m_iter = data.groupby(['donor', 'hap'])
+    if logging:
+        print(f"Clustering {len(data):,} reads across {data['donor'].nunique()} donors",
+              file=sys.stderr)
+        m_iter = tqdm(m_iter)
+
+    for _, sub in m_iter:
         X = sub['length'].values.reshape((-1, 1))
 
         # No cluster variability
@@ -250,7 +254,11 @@ def perform_clustering(data, min_bandwidth=10, germ_vaf=0.80, germ_q=0.05, absol
     if absolute:
         data['delta'] = data['delta'].abs()
 
-    return data, summary, germ
+    idx = ['donor', 'hap']
+    a = summary.set_index(idx)
+    b = germ.reset_index().set_index(idx)
+    out = a.join(b)
+    return data, out
 
 
 def fix_soma_haplotypes(data, germ_lookup):
@@ -301,9 +309,57 @@ def fix_soma_haplotypes(data, germ_lookup):
         read_cnt += change.sum()
         donor_cnt += 1
 
-    print(f"Masked {read_cnt} oddly haplotyped reads in {donor_cnt} donors within germ-q",
-          file=sys.stderr)
+    #print(f"Masked {read_cnt} oddly haplotyped reads in {donor_cnt} donors within germ-q",
+          #file=sys.stderr)
 
+
+def coverage_filter(data, min_reads_donor=3, min_reads_tissue=3):
+    """
+    We want at least a few non-germline reads per-donor - and for now we'll ignore hap=0 clusters
+    """
+    m_filt = ~data['is_germ']
+    alt_coverage = data[m_filt].groupby('donor').size()
+    keep_donors = alt_coverage[alt_coverage >= min_reads_donor].index
+    keep_donors = set(keep_donors)
+
+    # Now we want to group the reads within donor by tissue
+    # You could be more clever here. Instead of all reads, we should give an opportunity
+    # for each haplotype to have the instability.
+    # This opens the door for potential reassignment of reads to the other haplotype
+    grp = data[m_filt & data['donor'].isin(keep_donors)].groupby(['donor', 'protocol', 'hap'])
+    # Record the upper/lower ∆
+    lower = grp['delta'].min()
+    mean = grp['delta'].mean()
+    upper = grp['delta'].max()
+    spread = grp['length'].max() - grp['length'].min()
+    alt_reads = grp.size()
+
+    view = pd.concat([
+        lower.round(1),
+        mean.round(1),
+        grp['delta'].quantile(.5).round(1),
+        upper.round(1),
+        spread.round(1),
+        alt_reads],
+        axis=1)
+
+    view.columns = ['delta_min', 'delta_mean', 'delta_mid',
+                    'delta_max', 'spread', 'alt_reads']
+
+    # Record the per-protocol coverage for calculating VAF
+    tot_reads = data.groupby(['donor', 'protocol', 'hap']).size()
+    tot_reads.name = 'coverage'
+    view = view.join(tot_reads, how='left')
+
+    view = view.reset_index()
+    view['vaf'] = (view['alt_reads'] / view['coverage']).round(4)
+
+    # Now subset to only donor/tissue with minimum somatic read support
+    # & (view['mean'] > 20)
+    mask = (view['alt_reads'] >= min_reads_tissue)
+    filt_view = view[mask].copy()
+    # Filtered Summary TSV
+    return filt_view
 
 def rehaplotype(data):
     """
@@ -428,66 +484,23 @@ def plume_main(args):
               file=sys.stderr)
         data.drop(data.index[unphased], inplace=True)
 
-    data, clusters, germ = perform_clustering(data,
-                                              min_bandwidth=args.min_bandwidth,
-                                              germ_vaf=args.germ_vaf,
-                                              germ_q=args.germ_q,
-                                              absolute=args.abs_delta,
-                                              fix_haps=not args.no_mask)
+    data, germ = perform_clustering(data,
+                                    min_bandwidth=args.min_bandwidth,
+                                    germ_vaf=args.germ_vaf,
+                                    germ_q=args.germ_q,
+                                    absolute=args.abs_delta,
+                                    fix_haps=not args.no_mask)
 
-    idx = ['donor', 'hap']
-    a = clusters.set_index(idx)
-    b = germ.reset_index().set_index(idx)
-    out = a.join(b)
-    out.to_csv(f'{args.output}.germline.tsv', sep='\t')
+
+    germ.to_csv(f'{args.output}.germline.tsv', sep='\t')
     data.to_csv(f'{args.output}.anno_reads.tsv', sep='\t', index=False, float_format="%.1f")
+    
+    filt_view = coverage_filter(data, args.min_reads_donor, args.min_reads_tissue)
 
-    # We want at least a few non-germline reads per-donor - and for now we'll ignore hap=0 clusters
-    m_filt = ~data['is_germ']
-    alt_coverage = data[m_filt].groupby('donor').size()
-    keep_donors = alt_coverage[alt_coverage >= args.min_reads_donor].index
-    keep_donors = set(keep_donors)
-
-    # Now we want to group the reads within donor by tissue
-    # You could be more clever here. Instead of all reads, we should give an opportunity
-    # for each haplotype to have the instability.
-    # This opens the door for potential reassignment of reads to the other haplotype
-    grp = data[m_filt & data['donor'].isin(keep_donors)].groupby(['donor', 'protocol', 'hap'])
-    # Record the upper/lower ∆
-    lower = grp['delta'].min()
-    mean = grp['delta'].mean()
-    upper = grp['delta'].max()
-    spread = grp['length'].max() - grp['length'].min()
-    alt_reads = grp.size()
-
-    view = pd.concat([
-        lower.round(1),
-        mean.round(1),
-        grp['delta'].quantile(.5).round(1),
-        upper.round(1),
-        spread.round(1),
-        alt_reads],
-        axis=1)
-
-    view.columns = ['delta_min', 'delta_mean', 'delta_mid',
-                    'delta_max', 'spread', 'alt_reads']
-
-    # Record the per-protocol coverage for calculating VAF
-    tot_reads = data.groupby(['donor', 'protocol', 'hap']).size()
-    tot_reads.name = 'coverage'
-    view = view.join(tot_reads, how='left')
-
-    view = view.reset_index()
-    view['vaf'] = (view['alt_reads'] / view['coverage']).round(4)
-
-    # Now subset to only donor/tissue with minimum somatic read support
-    # & (view['mean'] > 20)
-    mask = (view['alt_reads'] >= args.min_reads_tissue)
-    filt_view = view[mask].copy()
-    # Filtered Summary TSV
     print((f"Identified {filt_view['donor'].nunique()} donor / "
            f"{filt_view['protocol'].nunique()} protocols with instability"),
            file=sys.stderr)
+
     filt_view.to_csv(f"{args.output}.unstable.tsv", sep='\t', index=False)
 
     if len(filt_view):

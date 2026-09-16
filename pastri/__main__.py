@@ -12,6 +12,7 @@ from pastri.locus_setup import locus_setup_main
 from pastri.locus_selector import selector_main
 from pastri.ksom.__main__ import main as ksom_main
 from pastri.smahtid import smahtid_main, quick_smahtid_main
+from pastri.scan import scan_main
 
 def flat_version(args):
     """Print the version"""
@@ -23,6 +24,7 @@ def flat_version(args):
 
 TOOLS = {       
          "select": selector_main,
+         "scan": scan_main,
          "tr": locus_setup_main,
          "plume": plume_main,
          #"plump": plump_main,
@@ -38,6 +40,7 @@ USAGE = f"""\
 Pastri v{__version__} - Pattern Analysis of Somatic TR Instability
 
     tr       Extract locus info from qdpi
+    scan     Scan loci with plume light
     plume    Analyze plume patterns
     plump    Analyze plump patterns
     origin   Tissue origin and batch effect tests
