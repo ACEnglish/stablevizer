@@ -41,7 +41,7 @@ def parse_args(args):
     return args
 
 
-def run_analysis(locus, h1_parts, h2_parts, smhtids, min_cov):
+def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
     _, start, end = locus
     span = int(end) - int(start)
 
@@ -68,17 +68,17 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, min_cov):
                          'length': all_lengths
     })
 
-    if len(data) < min_cov:
-        return locus, None, None
+    if len(data) < args.min_cov:
+        return None, None, None
 
     data['donor'] = data['smhtid'].apply(lambda x: x.donor)
     data['protocol'] = data['smhtid'].apply(lambda x: x.protocol)
     data, germ = perform_clustering(data,
-                                    min_bandwidth=10,
-                                    germ_vaf=0.80,
-                                    germ_q=1,
-                                    absolute=False,
-                                    fix_haps=True,
+                                    min_bandwidth=args.min_bandwidth,
+                                    germ_vaf=args.germ_vaf,
+                                    germ_q=args.germ_q,
+                                    absolute=args.abs_delta,
+                                    fix_haps=not args.no_mask,
                                     logging=False)
     data['chrom'] = locus[0]
     data['start'] = locus[1]
@@ -87,8 +87,16 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, min_cov):
     germ['chrom'] = locus[0]
     germ['start'] = locus[1]
     germ['end'] = locus[2]
+    
+    filtered = None
+    if (~data['is_germ']).any():
+        filtered = coverage_filter(data, 3, 3) 
+        if not filtered.empty:
+            filtered['chrom'] = locus[0]
+            filtered['start'] = locus[1]
+            filtered['end'] = locus[2]
 
-    return locus, data, germ
+    return locus, data, germ, filtered
 
 def scan_main(args):
     args = parse_args(args)
@@ -98,7 +106,7 @@ def scan_main(args):
         to_analyze = set()
         with open(args.subset, 'r') as fh:
             for line in fh:
-                to_analyze.add(tuple(line.strip().split('\t')))
+                to_analyze.add(tuple(line.strip().split('\t')[:3]))
 
     inputs = open(args.in_qdpi, 'r').read().strip().split('\n')
     smhtids = [SMaHTid.from_re(os.path.basename(_)) for _ in inputs]
@@ -111,12 +119,12 @@ def scan_main(args):
     
     with ProcessPoolExecutor(max_workers=args.threads) as executor:
         futures = [
-            executor.submit(run_analysis, locus, h1_parts, h2_parts, smhtids, args.min_cov)
+            executor.submit(run_analysis, locus, h1_parts, h2_parts, smhtids, args)
             for locus, h1_parts, h2_parts in stream_qdpi(inputs, to_analyze)
         ]
 
         for future in tqdm(as_completed(futures), total=len(futures)):
-            locus, data, germ = future.result()
+            data, germ, filtered = future.result()
             
             # Write
             if data is None:
@@ -125,16 +133,11 @@ def scan_main(args):
             germ.to_csv(germ_out, sep='\t', header=f_germ)
             f_germ = False
 
-            if (~data['is_germ']).any():
-                filtered = coverage_filter(data, 3, 3) 
-                if not filtered.empty:
-                    data.drop(columns=['donor', 'protocol'], inplace=True)
-                    data.to_csv(reads_out, sep='\t', index=False, header=f_read, float_format="%.1f")
-                    filtered['chrom'] = locus[0]
-                    filtered['start' ] = locus[1]
-                    filtered['end'] = locus[2]
-                    filtered.to_csv(unst_out, sep='\t', index=False, header=f_read)
-                    f_read = False
+            if (~data['is_germ']).any() and not filtered.empty:
+                data.drop(columns=['donor', 'protocol'], inplace=True)
+                data.to_csv(reads_out, sep='\t', index=False, header=f_read, float_format="%.1f")
+                filtered.to_csv(unst_out, sep='\t', index=False, header=f_read)
+                f_read = False
 
 if __name__ == '__main__':
     scan_main(sys.argv[1:])
