@@ -32,6 +32,8 @@ def parse_args(args):
                         help="Germline length interval [0-1] for masking haplotagging errors (%(default)s)")
     parser.add_argument("--no-mask", action='store_true',
                         help="Don't mask potential haplotagging errors (%(default)s)")
+    parser.add_argument("--abs-delta", action="store_true",
+                        help="Calculate abs(∆) (%(default)s)")
     parser.add_argument("--min-cov", type=int, default=30,
                         help="Minimum coverage over the locus (%(default)s)")
     parser.add_argument("-t", "--threads", type=int, default=1,
@@ -73,13 +75,19 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
 
     data['donor'] = data['smhtid'].apply(lambda x: x.donor)
     data['protocol'] = data['smhtid'].apply(lambda x: x.protocol)
-    data, germ = perform_clustering(data,
-                                    min_bandwidth=args.min_bandwidth,
-                                    germ_vaf=args.germ_vaf,
-                                    germ_q=args.germ_q,
-                                    absolute=args.abs_delta,
-                                    fix_haps=not args.no_mask,
-                                    logging=False)
+    try:
+        data, germ = perform_clustering(data,
+                                        min_bandwidth=args.min_bandwidth,
+                                        germ_vaf=args.germ_vaf,
+                                        germ_q=args.germ_q,
+                                        absolute=args.abs_delta,
+                                        fix_haps=not args.no_mask,
+                                        logging=False)
+    except Exception as e:
+        print(e)
+        # Need to figure this out
+        return None, None, None
+
     data['chrom'] = locus[0]
     data['start'] = locus[1]
     data['end'] = locus[2]
@@ -90,13 +98,17 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
     
     filtered = None
     if (~data['is_germ']).any():
-        filtered = coverage_filter(data, 3, 3) 
+        try:
+            filtered = coverage_filter(data, 3, 3) 
+        except Exception as e:
+            print(e)
+            return None, None, None
         if not filtered.empty:
             filtered['chrom'] = locus[0]
             filtered['start'] = locus[1]
             filtered['end'] = locus[2]
 
-    return locus, data, germ, filtered
+    return data, germ, filtered
 
 def scan_main(args):
     args = parse_args(args)
@@ -116,7 +128,9 @@ def scan_main(args):
     reads_out = open(f'{args.output}.anno_reads.tsv', 'w')
     unst_out = open(f'{args.output}.unstable.tsv', 'w')
     f_read = True # For header writing, reads and unst are done together
-    
+    # Debug
+    #for locus, h1_parts, h2_parts in stream_qdpi(inputs, to_analyze):
+    #    data, germ, filtered = run_analysis(locus, h1_parts, h2_parts, smhtids, args)
     with ProcessPoolExecutor(max_workers=args.threads) as executor:
         futures = [
             executor.submit(run_analysis, locus, h1_parts, h2_parts, smhtids, args)
@@ -126,14 +140,13 @@ def scan_main(args):
         for future in tqdm(as_completed(futures), total=len(futures)):
             data, germ, filtered = future.result()
             
-            # Write
             if data is None:
                 continue
 
             germ.to_csv(germ_out, sep='\t', header=f_germ)
             f_germ = False
 
-            if (~data['is_germ']).any() and not filtered.empty:
+            if filtered is not None:
                 data.drop(columns=['donor', 'protocol'], inplace=True)
                 data.to_csv(reads_out, sep='\t', index=False, header=f_read, float_format="%.1f")
                 filtered.to_csv(unst_out, sep='\t', index=False, header=f_read)
