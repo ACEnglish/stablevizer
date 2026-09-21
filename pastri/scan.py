@@ -44,7 +44,7 @@ def parse_args(args):
 
 
 def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
-    _, start, end = locus
+    chrom, start, end = locus
     span = int(end) - int(start)
 
     # Turn to DataFrame compatible with perform_clustering
@@ -84,29 +84,30 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
                                         fix_haps=not args.no_mask,
                                         logging=False)
     except Exception as e:
-        print(e)
-        # Need to figure this out
+        print("Exception on {chrom}:{start}-{end} {e}", file=sys.stderr)
         return None, None, None
 
-    data['chrom'] = locus[0]
-    data['start'] = locus[1]
-    data['end'] = locus[2]
+    data.insert(0, 'end', locus[2])
+    data.insert(0, 'start', locus[1])
+    data.insert(0, 'chrom', locus[0])
 
-    germ['chrom'] = locus[0]
-    germ['start'] = locus[1]
-    germ['end'] = locus[2]
-    
+    germ.insert(0, 'end', locus[2])
+    germ.insert(0, 'start', locus[1])
+    germ.insert(0, 'chrom', locus[0])
+
+
     filtered = None
     if (~data['is_germ']).any():
         try:
-            filtered = coverage_filter(data, 3, 3) 
+            filtered = coverage_filter(data, args.min_reads_donor, args.min_reads_tissue)
         except Exception as e:
-            print(e)
+            print("Exception on {chrom}:{start}-{end} {e}", file=sys.stderr)
             return None, None, None
         if not filtered.empty:
-            filtered['chrom'] = locus[0]
-            filtered['start'] = locus[1]
-            filtered['end'] = locus[2]
+            filtered.insert(0, 'end', locus[2])
+            filtered.insert(0, 'start', locus[1])
+            filtered.insert(0, 'chrom', locus[0])
+    #else: Need a plump checker?
 
     return data, germ, filtered
 
@@ -139,7 +140,7 @@ def scan_main(args):
 
         for future in tqdm(as_completed(futures), total=len(futures)):
             data, germ, filtered = future.result()
-            
+
             if data is None:
                 continue
 

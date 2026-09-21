@@ -816,7 +816,7 @@ def origin_main(args):
     parser = argparse.ArgumentParser(prog="origin", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("in_tsv", type=str,
-                        help="Input reads.tsv")
+                        help="Input anno_reads.tsv")
     parser.add_argument("-o", "--output", type=str, default="/dev/stdout",
                         help="Output origin.tsv annotations (%(default)s)")
     parser.add_argument("-s", "--square-reads", default=None,
@@ -832,7 +832,7 @@ def origin_main(args):
 
     read_parts = []
     parts = []
-    for (donor, hap), sub_reads in reads.groupby(["donor", "hap"]):
+    for (chrom, start, end, donor, hap), sub_reads in reads.groupby(["chrom", "start", "end", "donor", "hap"]):
         donor_key = f'{donor}.{hap}'
         all_cols = sub_reads['full_name'].unique()
 
