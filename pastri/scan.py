@@ -95,7 +95,6 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
     germ.insert(0, 'start', locus[1])
     germ.insert(0, 'chrom', locus[0])
 
-
     filtered = None
     if (~data['is_germ']).any():
         try:
@@ -107,7 +106,6 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
             filtered.insert(0, 'end', locus[2])
             filtered.insert(0, 'start', locus[1])
             filtered.insert(0, 'chrom', locus[0])
-    #else: Need a plump checker?
 
     return data, germ, filtered
 
@@ -143,7 +141,7 @@ def scan_main(args):
 
             if data is None:
                 continue
-
+            
             germ.to_csv(germ_out, sep='\t', header=f_germ)
             f_germ = False
 
