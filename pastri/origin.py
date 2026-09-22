@@ -832,18 +832,19 @@ def origin_main(args):
 
     read_parts = []
     parts = []
-    for (chrom, start, end, donor, hap), sub_reads in reads.groupby(["chrom", "start", "end", "donor", "hap"]):
-        donor_key = f'{donor}.{hap}'
-        all_cols = sub_reads['full_name'].unique()
-
+    # Weird logic here, you're breaking multi-donor
+    for (chrom, start, end, hap), sub_reads in reads.groupby(["chrom", "start", "end", "hap"]):
+        # C'mon.
+        donor_key = f'{chrom}:{start}-{end}.{hap}'
+        all_cols = sub_reads['smhtid'].unique()
         ref = (sub_reads[sub_reads['is_germ']]
-               .groupby(['full_name']).size()
+               .groupby(['smhtid']).size()
                .reindex(all_cols, fill_value=0))
         ref.name = donor_key
         ref = ref.to_frame().T
 
         alt = (sub_reads[~sub_reads['is_germ']]
-               .groupby(['full_name']).size()
+               .groupby(['smhtid']).size()
                .reindex(all_cols, fill_value=0))
         # MASKING - fewer than min_sup isn't considered present
         alt[alt < args.min_sup] = 0
@@ -854,7 +855,13 @@ def origin_main(args):
                                  columns=[SMaHTid(_) for _ in ref.columns])
         
         if alt.iloc[0].sum() != 0:
-            origin = annotate_origin(read_counts, args.alpha, args.min_coverage)
+            print('#', donor_key, file=sys.stderr)
+            try:
+                origin = annotate_origin(read_counts, args.alpha, args.min_coverage)
+            except Exception: 
+                # I got edge cases around when e.g. only Blood/Fibro have read support
+                # Which is weird, but need to just skip them
+                continue
             parts.append(origin)
         
         ref = ref.T[donor_key]
