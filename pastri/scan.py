@@ -32,6 +32,8 @@ def parse_args(args):
                         help="Minimum fraction of reads to collect germline cluster (%(default)s)")
     parser.add_argument("-q", "--germ-q", type=float, default=0.05,
                         help="Germline length interval [0-1] for masking haplotagging errors (%(default)s)")
+    parser.add_argument("-p", "--plump-threshold", type=int, default=50,
+                        help="Plump type annotation placed on alleles with germline spread ≥ (%(default)s)")
     parser.add_argument("--no-mask", action='store_true',
                         help="Don't mask potential haplotagging errors (%(default)s)")
     parser.add_argument("--abs-delta", action="store_true",
@@ -47,6 +49,9 @@ def parse_args(args):
 
 
 def flatness_metrics(lengths: np.ndarray) -> dict:
+    """
+    How flat is the distribution
+    """
     lengths = np.asarray(lengths, dtype=float)
     lengths = lengths[~np.isnan(lengths)]
 
@@ -55,16 +60,16 @@ def flatness_metrics(lengths: np.ndarray) -> dict:
     q1, q3 = np.percentile(lengths, [25, 75])
 
     return {
-        "n": len(lengths),
         "range": rng,
         "excess_kurtosis": stats.kurtosis(lengths, fisher=True, bias=False),
         "skewness": stats.skew(lengths, bias=False),
+        #"skewtest": stats.skewtest(lengths).pvalue if len(lengths) >= 30 else np.nan,
         # core-spread / total-range: near 1 = flat, near 0 = peaked w/ outlier tails
         "p10_90_over_range": (p90 - p10) / rng if rng > 0 else np.nan,
         "iqr_over_range": (q3 - q1) / rng if rng > 0 else np.nan,
         # normalized Shannon entropy of the histogram: 1 = perfectly uniform
         "norm_entropy": _normalized_entropy(lengths),
-        "cv": lengths.std(ddof=1) / lengths.mean() if lengths.mean() != 0 else np.nan,
+        #"cv": lengths.std(ddof=1) / lengths.mean() if lengths.mean() != 0 else np.nan,
     }
 
 def _normalized_entropy(lengths: np.ndarray, bins: int = 50) -> float:
@@ -115,7 +120,7 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
                                         fix_haps=not args.no_mask,
                                         logging=False)
     except Exception as e:
-        print("Exception on {chrom}:{start}-{end} {e}", file=sys.stderr)
+        print(f"Exception on {chrom}:{start}-{end} {e}", file=sys.stderr)
         return None, None, None
 
     reads.insert(0, 'end', locus[2])
@@ -125,23 +130,33 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
     germ.insert(0, 'end', locus[2])
     germ.insert(0, 'start', locus[1])
     germ.insert(0, 'chrom', locus[0])
+    donor = all_smhtids[0].donor
 
+    # for each hap, calculate plump metrics
+    #for i in germ[(germ['upper'] - germ['lower']) >= args.plump_threshold].index.levels[1].unique():
+    for i in germ.index.levels[1].unique():
+        # only check the germline reads
+        sub = reads[(reads['hap'] == i) & reads['is_germ']]
+        metrics = flatness_metrics(sub['length'].values)
+        germ.loc[(donor, i), list(metrics.keys())] = list(metrics.values())
+    
+    # state of 1 if there's a plume
+    germ['state'] = ((germ['upper'] - germ['lower']) >= args.plump_threshold).astype(int)
 
-    # Add in germ describer
-    # And also put in args.plump_spread for the 50bp classifier
-    # And then put on a state describer plume/plump/both/neither
-    # So then you have everything you need 
     filtered = None
     if (~reads['is_germ']).any():
         try:
             filtered = coverage_filter(reads, args.min_reads_donor, args.min_reads_tissue)
         except Exception as e:
-            print("Exception on {chrom}:{start}-{end} {e}", file=sys.stderr)
+            print(f"Exception on {chrom}:{start}-{end} {e}", file=sys.stderr)
             return None, None, None
+
         if not filtered.empty:
             filtered.insert(0, 'end', locus[2])
             filtered.insert(0, 'start', locus[1])
             filtered.insert(0, 'chrom', locus[0])
+            # Found a plume as well
+            germ.loc[germ.index.levels[1].isin(filtered['hap'].unique()), 'state'] += 2
 
     return reads, germ, filtered
 
@@ -165,7 +180,7 @@ def scan_main(args):
     f_read = True # For header writing, reads and unst are done together
     # Debug
     #for locus, h1_parts, h2_parts in stream_qdpi(inputs, to_analyze):
-    #    data, germ, filtered = run_analysis(locus, h1_parts, h2_parts, smhtids, args)
+        #data, germ, filtered = run_analysis(locus, h1_parts, h2_parts, smhtids, args)
     with ProcessPoolExecutor(max_workers=args.threads) as executor:
         futures = [
             executor.submit(run_analysis, locus, h1_parts, h2_parts, smhtids, args)
