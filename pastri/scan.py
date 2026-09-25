@@ -2,6 +2,8 @@ import os
 import sys
 import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import numpy as np
+from scipy import stats
 
 import numpy as np
 import pandas as pd
@@ -43,6 +45,35 @@ def parse_args(args):
     return args
 
 
+
+def flatness_metrics(lengths: np.ndarray) -> dict:
+    lengths = np.asarray(lengths, dtype=float)
+    lengths = lengths[~np.isnan(lengths)]
+
+    rng = lengths.max() - lengths.min()
+    p10, p50, p90 = np.percentile(lengths, [10, 50, 90])
+    q1, q3 = np.percentile(lengths, [25, 75])
+
+    return {
+        "n": len(lengths),
+        "range": rng,
+        "excess_kurtosis": stats.kurtosis(lengths, fisher=True, bias=False),
+        "skewness": stats.skew(lengths, bias=False),
+        # core-spread / total-range: near 1 = flat, near 0 = peaked w/ outlier tails
+        "p10_90_over_range": (p90 - p10) / rng if rng > 0 else np.nan,
+        "iqr_over_range": (q3 - q1) / rng if rng > 0 else np.nan,
+        # normalized Shannon entropy of the histogram: 1 = perfectly uniform
+        "norm_entropy": _normalized_entropy(lengths),
+        "cv": lengths.std(ddof=1) / lengths.mean() if lengths.mean() != 0 else np.nan,
+    }
+
+def _normalized_entropy(lengths: np.ndarray, bins: int = 50) -> float:
+    counts, _ = np.histogram(lengths, bins=bins)
+    probs = counts / counts.sum()
+    probs = probs[probs > 0]
+    ent = -(probs * np.log(probs)).sum()
+    return ent / np.log(bins)  # 1.0 = perfectly flat across bins
+
 def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
     chrom, start, end = locus
     span = int(end) - int(start)
@@ -65,18 +96,18 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
     all_lengths = np.concatenate([h1_flat, h2_flat]) + span
 
     # 4. Construct DataFrame instantly
-    data = pd.DataFrame({'smhtid': all_smhtids,
+    reads = pd.DataFrame({'smhtid': all_smhtids,
                          'hap': all_haps,
                          'length': all_lengths
     })
 
-    if len(data) < args.min_cov:
+    if len(reads) < args.min_cov:
         return None, None, None
 
-    data['donor'] = data['smhtid'].apply(lambda x: x.donor)
-    data['protocol'] = data['smhtid'].apply(lambda x: x.protocol)
+    reads['donor'] = reads['smhtid'].apply(lambda x: x.donor)
+    reads['protocol'] = reads['smhtid'].apply(lambda x: x.protocol)
     try:
-        data, germ = perform_clustering(data,
+        reads, germ = perform_clustering(reads,
                                         min_bandwidth=args.min_bandwidth,
                                         germ_vaf=args.germ_vaf,
                                         germ_q=args.germ_q,
@@ -87,18 +118,23 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
         print("Exception on {chrom}:{start}-{end} {e}", file=sys.stderr)
         return None, None, None
 
-    data.insert(0, 'end', locus[2])
-    data.insert(0, 'start', locus[1])
-    data.insert(0, 'chrom', locus[0])
+    reads.insert(0, 'end', locus[2])
+    reads.insert(0, 'start', locus[1])
+    reads.insert(0, 'chrom', locus[0])
 
     germ.insert(0, 'end', locus[2])
     germ.insert(0, 'start', locus[1])
     germ.insert(0, 'chrom', locus[0])
 
+
+    # Add in germ describer
+    # And also put in args.plump_spread for the 50bp classifier
+    # And then put on a state describer plume/plump/both/neither
+    # So then you have everything you need 
     filtered = None
-    if (~data['is_germ']).any():
+    if (~reads['is_germ']).any():
         try:
-            filtered = coverage_filter(data, args.min_reads_donor, args.min_reads_tissue)
+            filtered = coverage_filter(reads, args.min_reads_donor, args.min_reads_tissue)
         except Exception as e:
             print("Exception on {chrom}:{start}-{end} {e}", file=sys.stderr)
             return None, None, None
@@ -107,7 +143,7 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
             filtered.insert(0, 'start', locus[1])
             filtered.insert(0, 'chrom', locus[0])
 
-    return data, germ, filtered
+    return reads, germ, filtered
 
 def scan_main(args):
     args = parse_args(args)
