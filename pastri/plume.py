@@ -543,7 +543,8 @@ def plume_main(args):
         try:
             locus_viz(sub, donor, third=third, fig=subfig, germ=germ.loc[[donor]])
         except KeyError:
-            print(f"Skipping all detail for {donor}", file=sys.stderr)
+            pass # Why?
+            #print(f"Skipping all detail for {donor}", file=sys.stderr)
 
     parent_fig.savefig(f"{args.output}.all_donor_detail.png",
                        bbox_inches='tight')

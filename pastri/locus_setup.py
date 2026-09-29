@@ -63,7 +63,8 @@ def locus_setup_main(args):
         if not os.path.exists(bdir):
             os.mkdir(bdir)
         dest = os.path.join(bdir, f'{chrom}:{start}-{end}')
-        #os.mkdir(dest)
+        if not os.path.exists(dest):
+            os.mkdir(dest)
 
         delta_fns.append(os.path.join(dest, 'reads.tsv'))
         fasta_fns.append(os.path.join(dest, 'reads.fasta'))
