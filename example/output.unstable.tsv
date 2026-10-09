@@ -1,0 +1,5 @@
+donor	protocol	hap	delta_min	delta_mean	delta_mid	delta_max	spread	alt_reads	coverage	vaf
+donor_11	3D	1	87.0	93.0	94.0	98.0	11	3	15	0.2
+donor_12	3D	1	33.0	72.7	89.0	96.0	63	3	17	0.1765
+donor_16	3D	1	39.0	64.7	69.0	86.0	47	3	16	0.1875
+donor_23	3D	1	42.0	57.7	62.0	69.0	27	3	20	0.15
