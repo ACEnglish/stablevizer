@@ -13,6 +13,7 @@ from pastri.locus_selector import selector_main
 from pastri.ksom.__main__ import main as ksom_main
 from pastri.smahtid import smahtid_main, quick_smahtid_main
 from pastri.scan import scan_main
+from pastri.annotate_tr_seqs import anno_msa_main
 
 def flat_version(args):
     """Print the version"""
@@ -30,6 +31,7 @@ TOOLS = {
          #"plump": plump_main,
          "origin": origin_main,
          "msa": msa_main,
+         "anno_msa": anno_msa_main,
          "ksom": ksom_main,
          "smahtid": smahtid_main,
          "qsmahtid": quick_smahtid_main,

@@ -2,6 +2,9 @@
 Utility for making MSA from a locus' reads.fasta with helpers to subset by donor/tissue_abv/haplotype
 Outputs to f'{args.output_prefix}_{donor}_{tissue_abv}_{haplotype}.msa'
 
+Expects reads to be from qdpi with structure
+{SMaHTid}_{region}_{hap}_{read_name}
+
 Allow `--cross-tissue` and/or `--cross-haplotype`
 
 And allow `--consensus` mode to write output.consensus.fa
@@ -20,6 +23,9 @@ from tqdm import tqdm
 from pastri import SMaHTid
 
 def parse_args(args):
+    """
+    Argument parser
+    """
     parser = argparse.ArgumentParser(prog="msa", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("-f", "--fasta", default=None,
