@@ -11,7 +11,7 @@ mis-annotated. So instead:
 
   1. Build a majority-rule consensus from the MSA (columns that are mostly gap,
      i.e. the low-VAF insertions, are dropped -> consensus ~ germline).
-  2. Detect TRs ONCE on that consensus (TRF by default, TRAL optionally).
+  2. Detect TRs ONCE on that consensus 
      -> one harmonized set of regions + motifs per locus.
   3. Map each consensus TR back to MSA columns, so every read gets the
      residues falling in those columns (including insertion columns) as its
@@ -109,8 +109,10 @@ def canonical_motif(motif):
 
 # ----------------------------------------------------------------------------
 # TR detection on the consensus (one harmonized annotation per locus)
+# Default params are: (2, 7, 7, 80, 10, 50, 500)
+# Below params are based on same ones used by adotto catalog
 # ----------------------------------------------------------------------------
-def detect_trs_trf(seq, name, trf="trf", params=(2, 7, 7, 80, 10, 50, 500)):
+def detect_trs_trf(seq, name, trf="trf", params=(3, 7, 7, 80, 5, 5, 500)):
     """Tandem Repeats Finder. Returns list of dicts (0-based half-open on `seq`)."""
     with tempfile.TemporaryDirectory() as d:
         fa = Path(d) / "cons.fa"
@@ -242,11 +244,14 @@ def annotate_locus(names, seqs, locus, trf="trf", ploidy=1, min_allele_frac=0.15
 def anno_msa_main(args):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("msa", help="MSA FASTA file, or a directory of them")
-    ap.add_argument("-o", "--out", default="tr_calls.tsv", help="Output tsv (%(default)s))")
+    ap.add_argument("-o", "--out", default="motif_anno",
+                    help="Output prefix for tsv (%(default)s))")
     ap.add_argument("--trf", default="trf", help="path to TRF binary (%(default)s)")
     ap.add_argument("--ploidy", type=int, default=1, help="Germline ploidy (%(default)s)")
     ap.add_argument("--min-allele-frac", type=float, default=0.15,
                     help="a length cluster needs this read fraction to count as a germline allele (%(default)s)")
+    ap.add_argument("--min-reads", type=int, default=3,
+                    help="Minimum of donor-tissue-haplotype somatic reads to consider variance present")
     args = ap.parse_args(args)
 
     p = Path(args.msa)
@@ -258,7 +263,7 @@ def anno_msa_main(args):
         rows += annotate_locus(names, seqs, locus, args)
 
     df = pd.DataFrame(rows)
-    df.to_csv(args.out, sep="\t", index=False)
+    df.to_csv(f"{args.out}_reads.tsv", sep="\t", index=False)
     print(f"wrote {len(df)} read-level rows -> {args.out}")
 
     if df.empty:
@@ -271,8 +276,10 @@ def anno_msa_main(args):
                    n_somatic=("status", lambda s: s.str.startswith("somatic").sum()))
               .assign(vaf=lambda x: (x.n_somatic / x.n_reads).round(3)))
     print(summ[summ.n_somatic > 0].sort_values(by='n_somatic', ascending=False).head(30).to_string())
-    #print("\nSomatic expansions (motif, copy number, delta units):")
-    #print(som.groupby(['locus', 'region', 'status','motif'])['delta_units'].describe())
+
+    alt_somatic = som[['locus', 'read']].sort_values(by=['locus', 'read']).drop_duplicates()['locus'].value_counts()
+    keep = alt_somatic[alt_somatic >= args.min_reads]
+    keep.to_csv(f"{args.out}_passing.tsv", sep='\t')
 
 if __name__ == "__main__":
     anno_msa_main(sys.argv[1:])

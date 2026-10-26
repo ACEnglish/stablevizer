@@ -14,6 +14,7 @@ from pastri.ksom.__main__ import main as ksom_main
 from pastri.smahtid import smahtid_main, quick_smahtid_main
 from pastri.scan import scan_main
 from pastri.annotate_tr_seqs import anno_msa_main
+from pastri.motif_caller import motif_caller_main
 
 def flat_version(args):
     """Print the version"""
@@ -31,7 +32,8 @@ TOOLS = {
          #"plump": plump_main,
          "origin": origin_main,
          "msa": msa_main,
-         "anno_msa": anno_msa_main,
+         "anno_msa": anno_msa_main, # Redundant with motif_caller
+         "motif_caller", motif_caller_main,
          "ksom": ksom_main,
          "smahtid": smahtid_main,
          "qsmahtid": quick_smahtid_main,
