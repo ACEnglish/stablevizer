@@ -833,18 +833,25 @@ def origin_main(args):
     read_parts = []
     parts = []
     # Weird logic here, you're breaking multi-donor
-    for (chrom, start, end, hap), sub_reads in reads.groupby(["chrom", "start", "end", "hap"]):
+    # Right, so I ran this on a per-donor basis earlier
+    # But now we're back to multi-donor. So we have to go back
+    #for (chrom, start, end, hap), sub_reads in reads.groupby(["chrom", "start", "end", "hap"]):
+    # Here's the single locus logic
+    for (donor, hap), sub_reads in reads.groupby(["donor", "hap"]):
         # C'mon.
-        donor_key = f'{chrom}:{start}-{end}.{hap}'
-        all_cols = sub_reads['smhtid'].unique()
+        #donor_key = f'{chrom}:{start}-{end}.{hap}'
+        # sample_key = 'smhtid' multi-locus
+        sample_key = 'full_name'
+        donor_key = f'{donor}.{hap}'
+        all_cols = sub_reads[sample_key].unique()
         ref = (sub_reads[sub_reads['is_germ']]
-               .groupby(['smhtid']).size()
+               .groupby([sample_key]).size()
                .reindex(all_cols, fill_value=0))
         ref.name = donor_key
         ref = ref.to_frame().T
 
         alt = (sub_reads[~sub_reads['is_germ']]
-               .groupby(['smhtid']).size()
+               .groupby([sample_key]).size()
                .reindex(all_cols, fill_value=0))
         # MASKING - fewer than min_sup isn't considered present
         alt[alt < args.min_sup] = 0
