@@ -19,6 +19,7 @@ import pyabpoa
 import pandas as pd
 from pastri import SMaHTid
 from pastri.annotate_tr_seqs import annotate_locus
+from tqdm.contrib.concurrent import process_map
 
 def parse_args(args):
     """
@@ -36,10 +37,12 @@ def parse_args(args):
                         help="Read output (%(default)s)")
     parser.add_argument("-c", "--calls", default="motif_calls.tsv",
                         help="Donor-tissue-haplotype calls (%(default)s)")
+    parser.add_argument("-t", "--threads", type=int, default=1,
+                        help="Threads (%(default)s)")
     args = parser.parse_args(args)
     if not os.path.exists(args.fasta) or not os.path.exists(args.unstable) or not os.path.exists(args.germline):
         print("Missing File(s)")
-        sys.exit(0)
+        sys.exit(1)
     return args
 
 def make_msa(reads):
@@ -51,6 +54,14 @@ def make_msa(reads):
     aligner = pyabpoa.msa_aligner()
     aln_result = aligner.msa(all_seqs, False, True)
     return all_names, aln_result.msa_seq
+
+def core_process(item):
+    """
+    """
+    donor_tiss, reads = item
+    names, seqs = make_msa(reads)
+    # trf, ploidy, min_allele_frac
+    return annotate_locus(names, seqs, donor_tiss)
 
 def motif_caller_main(args):
     args = parse_args(args)
@@ -98,11 +109,9 @@ def motif_caller_main(args):
         m_reads[m_key].append((row['read_name'], read))
 
     rows = []
-    for donor_tiss, reads in m_reads.items():
-        names, seqs = make_msa(reads)
-        # trf, ploidy, min_allele_frac
-        rows += annotate_locus(names, seqs, donor_tiss)
-
+    for result in process_map(core_process, m_reads.items(), chunksize=min(1, max_workers=args.threads):
+        rows += result
+    
     if len(rows) == 0:
         sys.exit(0)
 

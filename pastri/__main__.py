@@ -33,7 +33,7 @@ TOOLS = {
          "origin": origin_main,
          "msa": msa_main,
          "anno_msa": anno_msa_main, # Redundant with motif_caller
-         "motif_caller", motif_caller_main,
+         "motif_caller": motif_caller_main,
          "ksom": ksom_main,
          "smahtid": smahtid_main,
          "qsmahtid": quick_smahtid_main,

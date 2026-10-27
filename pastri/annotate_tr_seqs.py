@@ -110,9 +110,9 @@ def canonical_motif(motif):
 # ----------------------------------------------------------------------------
 # TR detection on the consensus (one harmonized annotation per locus)
 # Default params are: (2, 7, 7, 80, 10, 50, 500)
-# Below params are based on same ones used by adotto catalog
+# Adotto params are: (3, 7, 7, 80, 5, 5, 500)
 # ----------------------------------------------------------------------------
-def detect_trs_trf(seq, name, trf="trf", params=(3, 7, 7, 80, 5, 5, 500)):
+def detect_trs_trf(seq, name, trf="trf", params=(2, 7, 7, 80, 10, 50, 500)):
     """Tandem Repeats Finder. Returns list of dicts (0-based half-open on `seq`)."""
     with tempfile.TemporaryDirectory() as d:
         fa = Path(d) / "cons.fa"
