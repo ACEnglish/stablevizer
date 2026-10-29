@@ -109,7 +109,7 @@ def motif_caller_main(args):
         m_reads[m_key].append((row['read_name'], read))
 
     rows = []
-    for result in process_map(core_process, m_reads.items(), chunksize=min(1, max_workers=args.threads):
+    for result in process_map(core_process, m_reads.items(), chunksize=1, max_workers=args.threads):
         rows += result
     
     if len(rows) == 0:
