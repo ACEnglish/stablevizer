@@ -61,7 +61,7 @@ def core_process(item):
     donor_tiss, reads = item
     names, seqs = make_msa(reads)
     # trf, ploidy, min_allele_frac
-    return annotate_locus(names, seqs, donor_tiss)
+    return annotate_locus(names, seqs, donor_tiss, min_allele_frac=0.01)
 
 def motif_caller_main(args):
     args = parse_args(args)

@@ -209,13 +209,13 @@ def annotate_locus(names, seqs, locus, trf="trf", ploidy=1, min_allele_frac=0.15
     detect = lambda s, n: detect_trs_trf(s, n, trf=trf)
     regions = harmonize_regions(detect(cons, locus + "_consensus"))
     if not regions:
-        print(f"[{locus}] no TR detected in consensus", file=sys.stderr)
+        #print(f"[{locus}] no TR detected in consensus", file=sys.stderr)
         return []
 
     cums = [ungapped_prefix_counts(s) for s in seqs]
     ungapped = ["".join(ch for ch in s if ch != "-") for s in seqs]
-
     rows = []
+
     for ri, reg in enumerate(regions):
         c0, c1 = col_of_cons[reg["start"]], col_of_cons[reg["end"] - 1]  # inclusive MSA columns
         per_read = []
@@ -227,6 +227,7 @@ def annotate_locus(names, seqs, locus, trf="trf", ploidy=1, min_allele_frac=0.15
 
         alleles, tol = call_alleles([len(s) for _, s, _, _ in per_read], reg["period"],
                                     ploidy=ploidy, min_allele_frac=min_allele_frac)
+
         for name, seg, cn, purity in per_read:
             status, allele, d_units = classify(len(seg), alleles, reg["period"], tol)
             rows.append(dict(
@@ -234,7 +235,7 @@ def annotate_locus(names, seqs, locus, trf="trf", ploidy=1, min_allele_frac=0.15
                 cons_start=reg["start"], cons_end=reg["end"],
                 motif=reg["motif"], motif_rc=revcomp(reg["motif"]), period=reg["period"],
                 read=name, tr_len_bp=len(seg), copy_number=round(cn, 2), purity=round(purity, 3),
-                germline_alleles_bp=",".join(map(str, alleles)),
+                germline_alleles_bp=alleles[0],
                 nearest_allele_bp=allele, delta_units=round(d_units, 2) if d_units == d_units else None,
                 status=status,
             ))

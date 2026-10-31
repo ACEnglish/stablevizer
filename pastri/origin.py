@@ -294,7 +294,8 @@ def batch_effect_p0(alt_A, ref_A, depth_B):
 def batch_test_full(reads, result):
     """
     Same as batch_test, but instead of only analyzing coverage over the subset of col that we're analyzing, it checks
-    over all
+    over all col in the set of col with alts. For example 3A & 3AC have alt, but 3K is also there with no alt, we want
+    to check the cumulative coverage excluding 3K's ref.
     # Parameters
     # reads - original
     # result - The test result
@@ -307,7 +308,8 @@ def batch_test_full(reads, result):
 
     finished_idx = result.loc[result['finished'], 'idx']
     sub = reads[np.isin(reads.idx, finished_idx)]
-    by_plat = sub.collapse_by([_.platform_name for _ in reads.col])
+
+    by_plat = sub.collapse_by([_.platform_name for _ in sub.col])
     frame = by_plat.to_frame()
     platform_counts = (
             frame.set_index(['idx', 'col'])
@@ -533,7 +535,6 @@ def anno_outlier(reads, level, blood_idxs=None, fibro_idxs=None, key="Tissue", *
         fibro_idxs) if fibro_idxs is not None else None
     result['annotation'] = f"{key} Outlier"
     result = batch_test_full(reads, result)
-
     return result
 
 def calculate_present_present(reads: ReadCounts):
@@ -573,7 +574,7 @@ def annotate_origin(orig_reads: ReadCounts, alpha=0.05, min_coverage=10):
     all_results.append(result0)
     # Initial filtering is performed on original reads so e.g. fibro counts are post filtering
     orig_reads = orig_reads[np.isin(orig_reads.idx, tmp_reads.idx[~filt_svs])]
-    print(f"Level 0 - Low Support:\t{filt_cnt}", file=sys.stderr)
+    #print(f"Level 0 - Low Support:\t{filt_cnt}", file=sys.stderr)
 
     # We're going to be marking these columns
     # We no longer want to check anything that we've already annotated
@@ -590,19 +591,19 @@ def annotate_origin(orig_reads: ReadCounts, alpha=0.05, min_coverage=10):
                             tissue_level, vaf_est='lower',
                             min_coverage=min_coverage)
     if result1 is not None:
-        print(f"Level 1 - Core Specific:\t{result1['finished'].sum()}", file=sys.stderr)
+        #print(f"Level 1 - Core Specific:\t{result1['finished'].sum()}", file=sys.stderr)
         result1['level'] = 1
         all_results.append(result1)
         reads = orig_reads.exclude_finished(result1)
     else:
-        print(f"Level 1 - Core Specific:\t0", file=sys.stderr)
+        #print(f"Level 1 - Core Specific:\t0", file=sys.stderr)
         reads = orig_reads
 
     # 2 - Tissue Specific
     result2 = anno_specific(reads, tissue_level, blood_idxs, fibro_idxs,
                             vaf_est='lower', min_coverage=min_coverage)
     result2['level'] = 2
-    print(f"Level 2 - Tissue Specific:\t{result2['finished'].sum()}", file=sys.stderr)
+    #print(f"Level 2 - Tissue Specific:\t{result2['finished'].sum()}", file=sys.stderr)
     all_results.append(result2)
     reads = reads.exclude_finished(result2)
 
@@ -611,7 +612,7 @@ def annotate_origin(orig_reads: ReadCounts, alpha=0.05, min_coverage=10):
                             key="Tissue*", vaf_est='lower',
                             min_coverage=min_coverage)
     result3['level'] = 3
-    print(f"Level 3 - Tissue* Specific:\t{result3['finished'].sum()}", file=sys.stderr)
+    #print(f"Level 3 - Tissue* Specific:\t{result3['finished'].sum()}", file=sys.stderr)
     all_results.append(result3)
     reads = reads.exclude_finished(result3)
 
@@ -627,7 +628,7 @@ def annotate_origin(orig_reads: ReadCounts, alpha=0.05, min_coverage=10):
     blood['annotation'] = "Blood"
     blood['level'] = 4
     blood = batch_test_full(reads, blood)
-    print(f"Level 4 - Blood:\t{blood['finished'].sum()}", file=sys.stderr)
+    #print(f"Level 4 - Blood:\t{blood['finished'].sum()}", file=sys.stderr)
     all_results.append(blood)
 
     # Now we want to drop blood and fibroblast
@@ -641,7 +642,7 @@ def annotate_origin(orig_reads: ReadCounts, alpha=0.05, min_coverage=10):
     result5_2 = anno_specific(reads, tissue_level, blood_idxs, fibro_idxs,
                               vaf_est='lower', min_coverage=min_coverage)
     result5_2['level'] = 5.2
-    print(f"Level 5.2 - Tissue Specific:\t{result5_2['finished'].sum()}", file=sys.stderr)
+    #print(f"Level 5.2 - Tissue Specific:\t{result5_2['finished'].sum()}", file=sys.stderr)
     all_results.append(result5_2)
     reads = reads.exclude_finished(result5_2)
 
@@ -649,7 +650,7 @@ def annotate_origin(orig_reads: ReadCounts, alpha=0.05, min_coverage=10):
     result5_3 = anno_specific(reads, tissue_dedup_level, blood_idxs, fibro_idxs,
                               key="Tissue*", vaf_est='lower', min_coverage=min_coverage)
     result5_3['level'] = 5.3
-    print(f"Level 5.3 - Tissue* Specific:\t{result5_3['finished'].sum()}", file=sys.stderr)
+    #print(f"Level 5.3 - Tissue* Specific:\t{result5_3['finished'].sum()}", file=sys.stderr)
     all_results.append(result5_3)
     reads = reads.exclude_finished(result5_3)
 
@@ -658,7 +659,7 @@ def annotate_origin(orig_reads: ReadCounts, alpha=0.05, min_coverage=10):
     result6 = anno_specific(reads, layer_level, blood_idxs, fibro_idxs,
                             min_col=3, min_coverage=min_coverage, key="Layer")
     result6['level'] = 6
-    print(f"Level 6 - Layer Specific:\t{result6['finished'].sum()}", file=sys.stderr)
+    #print(f"Level 6 - Layer Specific:\t{result6['finished'].sum()}", file=sys.stderr)
     all_results.append(result6)
     reads = reads.exclude_finished(result6)
 
@@ -666,7 +667,7 @@ def annotate_origin(orig_reads: ReadCounts, alpha=0.05, min_coverage=10):
     result7 = anno_outlier(reads, tissue_level, blood_idxs, fibro_idxs,
                            min_col=3, min_coverage=min_coverage)
     result7['level'] = 7
-    print(f"Level 7 - Tissue Outlier:\t{result7['finished'].sum()}", file=sys.stderr)
+    #print(f"Level 7 - Tissue Outlier:\t{result7['finished'].sum()}", file=sys.stderr)
     all_results.append(result7)
     reads = reads.exclude_finished(result7)
 
@@ -674,7 +675,7 @@ def annotate_origin(orig_reads: ReadCounts, alpha=0.05, min_coverage=10):
     result8 = anno_outlier(reads, tissue_dedup_level, blood_idxs, fibro_idxs,
                            min_col=3, key="Tissue*", min_coverage=min_coverage)
     result8['level'] = 8
-    print(f"Level 8 - Tissue* Outlier:\t{result8['finished'].sum()}", file=sys.stderr)
+    #print(f"Level 8 - Tissue* Outlier:\t{result8['finished'].sum()}", file=sys.stderr)
     all_results.append(result8)
     reads = reads.exclude_finished(result8)
 
@@ -683,7 +684,7 @@ def annotate_origin(orig_reads: ReadCounts, alpha=0.05, min_coverage=10):
                            min_col=3, vaf_est='cumulative', key="Layer",
                            min_coverage=min_coverage)
     result9['level'] = 9
-    print(f"Level 9 - Layer Outlier:\t{result9['finished'].sum()}", file=sys.stderr)
+    #print(f"Level 9 - Layer Outlier:\t{result9['finished'].sum()}", file=sys.stderr)
     all_results.append(result9)
     reads = reads.exclude_finished(result9)
 
@@ -712,7 +713,7 @@ def annotate_origin(orig_reads: ReadCounts, alpha=0.05, min_coverage=10):
         #row = row.unstack(level=[1])
         #result10 = result10.set_index('idx').join(row).reset_index()
         result10 = batch_test_full(m_reads, result10)
-        print(f"Level 10 - Unclassified:\t{result10['finished'].sum()}", file=sys.stderr)
+        #print(f"Level 10 - Unclassified:\t{result10['finished'].sum()}", file=sys.stderr)
         all_results.append(result10)
 
     # Organize the results' columns
@@ -752,7 +753,7 @@ def annotate_origin(orig_reads: ReadCounts, alpha=0.05, min_coverage=10):
 
     # Tack on the present present column
     result = result.set_index('idx').join(present_present, how='left').reset_index()
-    print(f"Produced {len(result)} annotations")
+    #print(f"Produced {len(result)} annotations")
 
     return result
 
@@ -802,7 +803,7 @@ def batch_origin_main(args):
     else:
         parser.error("Missing Inputs")
 
-    print(f"Annotating {len(reads.idx)} variants across {len(reads.col)} samples")
+    #print(f"Annotating {len(reads.idx)} variants across {len(reads.col)} samples")
     results = annotate_origin(reads, args.alpha, args.min_coverage)
 
     results.to_csv(args.output, sep='\t', index=False)
@@ -854,6 +855,7 @@ def origin_main(args):
                .groupby([sample_key]).size()
                .reindex(all_cols, fill_value=0))
         # MASKING - fewer than min_sup isn't considered present
+        # And that isn't great because you could have the support split across samples
         alt[alt < args.min_sup] = 0
         alt.name = donor_key
         alt = alt.to_frame().T
@@ -862,7 +864,7 @@ def origin_main(args):
                                  columns=[SMaHTid(_) for _ in ref.columns])
         
         if alt.iloc[0].sum() != 0:
-            print('#', donor_key, file=sys.stderr)
+            #print('#', donor_key, file=sys.stderr)
             try:
                 origin = annotate_origin(read_counts, args.alpha, args.min_coverage)
             except Exception: 

@@ -186,7 +186,7 @@ ASSAYCODES = {
 # Helper Objects #
 ##################
 
-@dataclasses.dataclass
+@dataclasses.dataclass(order=True)
 class SMaHTid():
     """
     """
@@ -262,6 +262,19 @@ class SMaHTid():
         match = SMHTIDRE.findall(name)
         assert len(match) == 1,  f"Unable to parse string {name}"
         return SMaHTid(match[0])
+
+    def matches_to(self, other):
+        """
+        Given an arbitrary string of e.g. protocol/tissue_dedup
+        See if this has that property. This is maybe a loose check
+        """
+        return other in self.to_dict().values()
+
+    def matches_in(self, others):
+        """
+        list matching
+        """
+        return any([self.matches_to(other) for other in others])
 
     def to_dict(self):
         """
