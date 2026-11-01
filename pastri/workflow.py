@@ -283,11 +283,12 @@ def main(in_dir):
         motif_annotations['is_somatic'] = (motif_annotations['tr_len_bp'] - motif_annotations['germline_alleles_bp']).abs() >= MIN_LENGTH_CHANGE
         
         # Mark the reads that we got motif annotations on
-        reads = reads.reset_index().join(
+        agg = (
             motif_annotations
                 .groupby('read')[['region', 'motif', 'delta_units']]
-                .agg(list), 
-            on='read')
+                .agg(lambda s: ','.join(map(str, s)))
+        )
+        reads = reads.reset_index().join(agg, on='read')
         
         # And if they are somatic
         reads = reads.join(
@@ -335,7 +336,8 @@ def main(in_dir):
     return ret
 
 if __name__ == '__main__':
-    b_dir = '/Users/English/code/SMaHT_TR_explore/analysis/debug_oct22_catalog'
-    results = process_map(main, glob.glob(os.path.join(b_dir, 'chr*', '*')), max_workers=THREADS, chunksize=1)
+    #b_dir = '/Users/English/code/SMaHT_TR_explore/analysis/debug_oct22_catalog'
+    b_dir = sys.argv[1]
+    results = process_map(main, glob.glob(os.path.join(b_dir, '*')), max_workers=THREADS, chunksize=1)
     #result = main("/Users/English/code/SMaHT_TR_explore/analysis/debug_oct22_catalog/chr2/chr2:69096232-69096559/")
 
