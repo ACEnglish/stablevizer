@@ -7,7 +7,9 @@ from collections import defaultdict
 import pysam
 import numpy as np
 import pandas as pd
+from tqdm.contrib.concurrent import process_map
 
+# Todo: Reorganize repository around these core functions
 from pastri import SMaHTid
 from pastri.scan import flatness_metrics
 from pastri.motif_caller import make_msa
@@ -17,6 +19,7 @@ from pastri.experimental_caller import instability_metrics
 from pastri.readcounts import ReadCounts
 from pastri.origin import annotate_origin
 
+# ToDo parameterize
 # Maximum percent of reads from a donor that can be unphased before we are no longer interested in analyzing it
 MAX_UNPHASED_PCT = 0.50
 # Maximum allele balance allowed to process a donor
@@ -25,14 +28,14 @@ MAX_ALLELE_BALANCE = 0.60
 MIN_OVERDISPERSION_SPAN = 50
 # Minimum normalized entropy of germline reads with high overdispersion span to consider the site as 'plump'
 MIN_OVERDISPERSION_ENTROPY = 0.65
-
 # Minimum number of outlier reads in a single tissue to consider a plume
 MIN_OUTLIER_SUPPORT = 3
 # Minimum number of basepairs away from germline to be considered somatic
 MIN_LENGTH_CHANGE = 10
-
 # Alpha for origin annotations
 ORIGIN_ALPHA = 0.05
+# Multiprocessing
+THREADS = 8
 
 def check_reference_filters(in_dir):
     """
@@ -307,6 +310,7 @@ def main(in_dir):
         ret['reads'] = reads
         ret['meta']['motif_failures'] = list(set(plume_table.index) - set(motif_table.index))
         ret['meta']['unstable_protocols'] = json.loads(motif_table.reset_index()['protocol'].value_counts().to_json())
+
         ret["instability_table"] = instability_table
         ret["motif_table"] = motif_table
         
@@ -314,8 +318,12 @@ def main(in_dir):
         ret.update(calculate_origin(reads))
         if 'global_origin' in ret:
             go = ret['global_origin']
-            ret['meta']['origin_protocol'] = list(go[(go['direction'] == '+') | go['direction'].isna()]['col'].unique())
-    
+            go = go[(go['direction'] == '+') | go['direction'].isna()]
+            ret['meta']['origin'] = {
+                    'protocols':list(go['col'].unique()),
+                    'annotation':go.iloc[0]['annotation']
+            }
+
     # I guess just save this in a subdir named caller_results/
     
     for k, d in ret.items():
@@ -327,9 +335,7 @@ def main(in_dir):
     return ret
 
 if __name__ == '__main__':
-    from tqdm import tqdm
-    from tqdm.contrib.concurrent import process_map
     b_dir = '/Users/English/code/SMaHT_TR_explore/analysis/debug_oct22_catalog'
-    results = process_map(main, glob.glob(os.path.join(b_dir, 'chr*', '*')), max_workers=8, chunksize=1)
+    results = process_map(main, glob.glob(os.path.join(b_dir, 'chr*', '*')), max_workers=THREADS, chunksize=1)
     #result = main("/Users/English/code/SMaHT_TR_explore/analysis/debug_oct22_catalog/chr2/chr2:69096232-69096559/")
 
