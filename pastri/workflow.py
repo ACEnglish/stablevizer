@@ -130,7 +130,10 @@ def check_outliers(reads, min_reads=MIN_OUTLIER_SUPPORT):
     And a table of the donor-tissue-haplotypes that pass the filter.
     """
     counts = reads.groupby(['donor', 'protocol', 'hap', 'is_germ']).size().unstack()
-    return counts[counts[False] >= min_reads]
+    if False in counts.columns:
+        return counts[counts[False] >= min_reads]
+    return None
+
 
 def calculate_origin(reads):
     """
@@ -200,20 +203,39 @@ def calculate_origin(reads):
     ret['global_origin'] = annotate_origin(read_counts)
     return ret
 
-def main(in_dir):
-    locus = os.path.basename(in_dir)
+def save_results(in_dir, ret):
+    """
+    """
     o_dir = os.path.join(in_dir, "caller_results")
     if not os.path.exists(o_dir):
         os.mkdir(o_dir)
+
+    for k, d in ret.items():
+        if k != 'meta':
+            d.to_csv(os.path.join(o_dir, k + '.tsv'), sep='\t')
+        else:
+            with open(os.path.join(o_dir, 'meta.json'), 'w') as fout:
+                json.dump(d, fout)
+
+
+def main(in_dir):
+    locus = os.path.basename(in_dir)
     meta = {'locus': locus}
     meta['ref_filters'] = check_reference_filters(in_dir)
     # We don't process reference filtered loci anymore
-    if meta['ref_filters']:
-        with open(os.path.join(o_dir, 'meta.json'), 'w') as fout:
-                json.dump(meta, fout)
-        return meta
 
-    reads, fasta = make_read_table(in_dir)
+    if False and meta['ref_filters']:
+        ret = {'meta':meta}
+        save_results(in_dir, ret)
+        return ret
+
+    try:
+        reads, fasta = make_read_table(in_dir)
+    except OSError:
+        meta['error'] = "Broken reads.fasta"
+        ret = {'meta': meta}
+        save_results(in_dir, ret)
+        return ret
 
     # Drop coverage anomaly donors
     cov_anom = read_depth_anomaly(in_dir)
@@ -250,6 +272,15 @@ def main(in_dir):
     germ['plump_signal'] = plump_table["plump_signal"]
     
     plume_table = check_outliers(reads)
+    if plume_table is None:
+        meta['error'] = "No Plume Reads"
+        ret = {"reads": reads,
+               "germ_table": germ, 
+               "plump_table": plump_table, 
+               "meta": meta}
+        save_results(in_dir, ret)
+        return ret
+
     germ['plume_signal'] = germ.index.isin(plume_table.reset_index(level=1).index)
 
     # Expand the read annotations with their motif
@@ -269,11 +300,11 @@ def main(in_dir):
     motif_annotations = pd.DataFrame(motif_annotations)
 
     ret = {"reads": reads,
-            "germ_table": germ, 
-            "plume_table": plume_table, 
-            "plump_table": plump_table, 
-            "motif_annotations": motif_annotations,
-            "meta": meta}
+           "germ_table": germ, 
+           "plume_table": plume_table, 
+           "plump_table": plump_table, 
+           "motif_annotations": motif_annotations,
+           "meta": meta}
 
     # We need this guard, but I don't like what this is doing to the code structure
     # But this section is all about pullin over motif annotated and is somatic information
@@ -320,24 +351,25 @@ def main(in_dir):
         if 'global_origin' in ret:
             go = ret['global_origin']
             go = go[(go['direction'] == '+') | go['direction'].isna()]
-            ret['meta']['origin'] = {
-                    'protocols':list(go['col'].unique()),
-                    'annotation':go.iloc[0]['annotation']
-            }
+            if len(go) >= 1:
+                ret['meta']['origin'] = {
+                        'protocols':list(go['col'].unique()),
+                        'annotation':go.iloc[0]['annotation']
+                }
+            else:
+                ret['meta']['error'] = "No Global Origin"
 
-    # I guess just save this in a subdir named caller_results/
-    
-    for k, d in ret.items():
-        if k != 'meta':
-            d.to_csv(os.path.join(o_dir, k + '.tsv'), sep='\t')
-        else:
-            with open(os.path.join(o_dir, 'meta.json'), 'w') as fout:
-                json.dump(d, fout)
+    save_results(in_dir, ret)
     return ret
 
 if __name__ == '__main__':
-    #b_dir = '/Users/English/code/SMaHT_TR_explore/analysis/debug_oct22_catalog'
     b_dir = sys.argv[1]
-    results = process_map(main, glob.glob(os.path.join(b_dir, '*')), max_workers=THREADS, chunksize=1)
-    #result = main("/Users/English/code/SMaHT_TR_explore/analysis/debug_oct22_catalog/chr2/chr2:69096232-69096559/")
+    main(b_dir)
+    #all_dirs = glob.glob(os.path.join(b_dir, '*')) 
+    # filter to not redo too many
+    #filtered = all_dirs
+    #for i in all_dirs:
+        #if not os.path.exists(os.path.join(i, "caller_results")):
+            #filtered.append(i)
+    #results = process_map(main, filtered, max_workers=THREADS, chunksize=1)
 
