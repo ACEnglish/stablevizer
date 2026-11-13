@@ -76,7 +76,7 @@ def parse_args(args):
 
 def locus_viz(data, donor="Sample", third='auto', fig=None, germ=None):
     """
-    Make a per-sample 3-panel swarmplots of read length distributions
+    Make a per-sample 3-panel stripplots of read length distributions
 
     When `third == 'auto'`, the last panel defaults to `is_{protocol}` where protocol is the most common ~is_germ protocol
     When `third == None`, the last panel is skipped.

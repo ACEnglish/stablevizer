@@ -306,3 +306,40 @@ perhaps-but-just-maybe useful for finding more blatant batch effects. However, w
 most (many) of the loci are of "Outlier" origin. When populating the `meta['origin']`, only the highest VAF element is
 chosen. Also, for "Outlier" results, only `direction = '+'` enrichments are considered for the `meta['origin']`
 
+
+`plume_caller_results.tsv`
+==========================
+This is the output of the plume signals that survive the filtering logic developed. The logic is:
+- Drop donors that are covanom, poorphase, poor_allelebalance
+- Drop donor-tissue-haplotypes that don't produce an instability score of at least 0.02
+
+The columns of this file are:
+- donor : The donor
+- protocol : protocol code
+- haplotype : 1 or 2
+For the length-based MeanShift Clustering assignment of reads to is_germ, calculate their read-length delta
+distribution and report
+- is_germ_mean 
+- is_germ_median
+- is_germ_max
+- is_germ_min
+- not_germ_mean : not germ isn't the same as is somatic
+- not_germ_median
+- not_germ_max
+- not_germ_min
+- not_germ_count : read count, length-based somatic VAF would be not_germ_count / coverage
+
+For the sequence-based motif annotations done by MSA+TRF, calculate the motif delta distribution and report
+- motifs : comma separated list of all observed motifs across reads
+- not_soma_mean : not somatic isn't the same as is germ
+- not_soma_median
+- not_soma_max
+- not_soma_min
+- is_soma_mean
+- is_soma_median
+- is_soma_max
+- is_soma_min
+- is_soma_count: read count, motif-based somatic VAF would be not_germ_count / coverage
+- coverage : Total read coverage
+- instability: maximum instability score across all regions for this DTH from the instability_table.tsv 
+

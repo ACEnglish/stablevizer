@@ -249,7 +249,6 @@ def main(in_dir):
     meta['preclustering_read_counts'] = json.loads(read_counts.set_index('donor').to_json())
     meta['poorphase_donors'] = list(bad_donors)
     reads.drop(reads.index[reads['donor'].isin(bad_donors)], inplace=True)
-        
 
     # Need to drop unphased here before clustering
     reads.drop(reads.index[reads['hap'] == 0], inplace=True)
