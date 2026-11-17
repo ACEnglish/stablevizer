@@ -34,6 +34,8 @@ MIN_OUTLIER_SUPPORT = 3
 MIN_LENGTH_CHANGE = 10
 # Alpha for origin annotations
 ORIGIN_ALPHA = 0.05
+# Minimum instability score to populate plume caller results
+MIN_INSTABILITY_SCORE = 0.02
 # Multiprocessing
 THREADS = 8
 
@@ -203,6 +205,57 @@ def calculate_origin(reads):
     ret['global_origin'] = annotate_origin(read_counts)
     return ret
 
+def make_plume_results(sub_reads, unstable):
+    """
+    Make the sign-out table
+    """
+    # Subtract low-instability donors
+    keep_unstable = unstable[unstable['instability'] >= 0.02].copy()
+    keys = sub_reads['donor'] + '_' + sub_reads['protocol'] + '_' + sub_reads['hap'].astype(str) 
+    sub_reads = sub_reads[keys.isin(keep_unstable['locus'])]
+
+    def summarize(state, values):
+        # Quick length summary
+        def subdo(arr):
+            return [arr.mean().round(1), arr.median().round(1), arr.max().round(1), arr.min().round(1)]
+        return subdo(values[state]) + subdo(values[~state]) + [(~state).sum()]
+
+    def reformat(val):
+        if val == 'NaN':
+            return np.nan
+        if ',' not in val:
+            return float(val)
+        vals = np.fromiter(val.split(','), float)
+        return vals[np.argmax(np.abs(vals))]
+        
+    if sub_reads['delta_units'].dtype == 'str':
+        sub_reads['delta_units'] = sub_reads['delta_units'].apply(reformat)
+
+    out_rows = []
+    for (d, t, h), df in sub_reads.groupby(['donor', 'protocol', 'hap']):
+        out_rows.append([d, t, h] 
+                        + summarize(df['is_germ'], df['delta'])
+                        + [','.join(df['motif'].unique())]
+                        + summarize(~df['is_somatic'], df['delta_units'])
+                        + [len(df)]
+                       )
+
+    out = pd.DataFrame(out_rows, columns=['donor', 'protocol', 'haplotype',
+                                          'is_germ_mean', 'is_germ_median', 'is_germ_max', 'is_germ_min',
+                                          'not_germ_mean', 'not_germ_median', 'not_germ_max', 'not_germ_min',
+                                          'not_germ_count', 
+                                          'motifs',
+                                          'not_soma_mean', 'not_soma_median', 'not_soma_max', 'not_soma_min',
+                                          'is_soma_mean', 'is_soma_median', 'is_soma_max', 'is_soma_min',
+                                          'is_soma_count',
+                                          'coverage'
+                                         ])
+    keep_unstable['donor'] = keep_unstable['locus'].apply(lambda x: x.split('_')[0])
+    m_score = keep_unstable.groupby(['donor', 'protocol', 'haplotype'])['instability'].max().round(5)
+    out.set_index(['donor', 'protocol', 'haplotype'], inplace=True)
+    out['instability'] = m_score   
+    return out
+
 def save_results(in_dir, ret):
     """
     """
@@ -222,8 +275,8 @@ def main(in_dir):
     locus = os.path.basename(in_dir)
     meta = {'locus': locus}
     meta['ref_filters'] = check_reference_filters(in_dir)
-    # We don't process reference filtered loci anymore
 
+    # We don't process reference filtered loci anymore
     if False and meta['ref_filters']:
         ret = {'meta':meta}
         save_results(in_dir, ret)
@@ -357,6 +410,8 @@ def main(in_dir):
                 }
             else:
                 ret['meta']['error'] = "No Global Origin"
+        # Consolidate the information for the passing alleles
+        ret['plume_caller_results'] = make_plume_results(reads, instability_table)
 
     save_results(in_dir, ret)
     return ret

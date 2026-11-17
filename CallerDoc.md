@@ -343,3 +343,37 @@ For the sequence-based motif annotations done by MSA+TRF, calculate the motif de
 - coverage : Total read coverage
 - instability: maximum instability score across all regions for this DTH from the instability_table.tsv 
 
+`plume_caller_results.tsv` -- Version 2
+=======================================
+This is the output of the plume signals that survive the filtering logic developed. The logic is:
+- Drop donors that are covanom, poorphase, poor_allelebalance
+- Drop donor-tissue-haplotypes that don't produce an instability score of at least 0.02
+
+Because a single locus may have multiple unstable TR regions, we must report another level of
+`region` on top of `donor`, `tissue`, `haplotype`. The value of a region is an integer, HOWEVER, these numbers 
+are not harmonized across donor-tissue-haplotypes (e.g. SMHT001-3A region 0 doesn't require identity to SMHT001-3AC region 0).
+This means that a single donor-tissue-haplotype __may__ have multiple rows from a single locus.
+
+The columns of this file are:
+- chrom: Locus chromosome
+- start: Locus start
+- end: Locus end
+- donor: donor id
+- protocol: protocol id
+- hap: haplotype (1 or 2)
+- region: TR subregion inside of locus 
+- soma_reads: Number of reads with a `motif_delta * motif_len >= 10` where `motif_delta = motif_count_consensus - motif_count_consensus`
+- coverage: Total number of reads analyzed for donor-tissue-haplotype
+- vaf: soma_reads over coverage
+- instability: Instability score of this donor-tissue-haplotype-region
+- germ_purity: Average purity of non-soma reads' motifs over this region
+- soma_purity: Average purity of soma reads' motifs over this region
+- motif: Motif found in this donor-tissue-haplotype-region
+- germ_mean: Mean motif_delta of non-soma reads
+- germ_median: Medianmotif_delta of non-soma reads
+- germ_max: Max motif_delta of non-soma reads
+- germ_min: Min motif_delta of non-soma reads
+- soma_mean: Mean motif_delta of soma reads
+- soma_median: Median motif_delta of soma reads
+- soma_max: Max motif_delta of soma reads
+- soma_min: Min motif_delta of soma reads
