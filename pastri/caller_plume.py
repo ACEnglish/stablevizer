@@ -29,6 +29,8 @@ def main():
     def summarize(state, values):
         # Quick length summary
         def subdo(arr):
+            if arr.empty:
+                return [np.nan] * 4
             return [arr.mean().round(1), arr.median().round(1), arr.max().round(1), arr.min().round(1)]
         return subdo(values[state]) + subdo(values[~state]) + [(~state).sum()]
 
