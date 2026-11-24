@@ -1,9 +1,10 @@
 import os
 import sys
 import argparse
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
 from scipy import stats
+from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -12,6 +13,34 @@ from tqdm import tqdm
 from pastri import SMaHTid
 from pastri.plume import perform_clustering, coverage_filter
 from pastri.qdpi_io import stream_qdpi
+
+
+# Don't like separating these from the perform_clustering outputs
+GERM_COLS = ["donor", "hap", "chrom", "start", "end", "nclust", "ngerm", "nassign", "total", "bandwidth", "pct_germ",
+             "mean", "mid", "lower", "upper", "range", "excess_kurtosis", "skewness", "p10_90_over_range",
+             "iqr_over_range", "norm_entropy", "state"]
+UNST_COLS = ["chrom", "start", "end", "donor", "protocol", "hap", "delta_min",
+             "delta_mean", "delta_mid", "delta_max", "spread", "alt_reads", 
+             "coverage", "vaf"]
+
+def bounded_map(executor, fn, arg_iter, max_pending):
+    """
+    Lazily submit fn(*args) for each args tuple in arg_iter, keeping at most
+    `max_pending` futures in flight. Yields results as they complete
+    (unordered). arg_iter is only advanced when there's room for more work.
+    """
+    pending = set()
+    for args in arg_iter:
+        pending.add(executor.submit(fn, *args))
+        if len(pending) >= max_pending:
+            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+            for fut in done:
+                yield fut.result()
+    # Source exhausted; drain what's left
+    while pending:
+        done, pending = wait(pending, return_when=FIRST_COMPLETED)
+        for fut in done:
+            yield fut.result()
 
 def parse_args(args):
     parser = argparse.ArgumentParser(prog="scan", description=__doc__,
@@ -22,6 +51,8 @@ def parse_args(args):
                         help="Bed file of loci to analyze")
     parser.add_argument("-o", "--output", default="output",
                         help="Output prefix (%(default)s)")
+    parser.add_argument("-v", "--min-vaf", type=float, default=0.01,
+                        help="Minimum VAF (prescreening only; %(default)s)")
     parser.add_argument("-r", "--min-reads-donor", type=int, default=3,
                         help="Minimum number of non-germ reads required in donor (%(default)s)")
     parser.add_argument("-R", "--min-reads-tissue", type=int, default=3,
@@ -38,7 +69,7 @@ def parse_args(args):
                         help="Don't mask potential haplotagging errors (%(default)s)")
     parser.add_argument("--abs-delta", action="store_true",
                         help="Calculate abs(∆) (%(default)s)")
-    parser.add_argument("--min-cov", type=int, default=30,
+    parser.add_argument("--min-cov", type=int, default=20,
                         help="Minimum coverage over the locus (%(default)s)")
     parser.add_argument("-t", "--threads", type=int, default=1,
                         help="Number of threads (%(default)s)")
@@ -82,6 +113,11 @@ def _normalized_entropy(lengths: np.ndarray, bins: int = 50) -> float:
 def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
     chrom, start, end = locus
     span = int(end) - int(start)
+    
+    # This should still build germline alleles so that is complete
+    # though I do need to shift it by the span, I reckon
+    # And I need to always report locus donor prot,prot,prot for who was analyzed
+
 
     # Turn to DataFrame compatible with perform_clustering
     h1_counts = [x.size for x in h1_parts]
@@ -105,12 +141,20 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
                          'hap': all_haps,
                          'length': all_lengths
     })
-
-    if len(reads) < args.min_cov:
-        return None, None, None
-
     reads['donor'] = reads['smhtid'].apply(lambda x: x.donor)
     reads['protocol'] = reads['smhtid'].apply(lambda x: x.protocol)
+
+    # For each donor-hap calculate metrics
+    # For each donor-tissue-hap calculate metrics
+    # You can check pass_screen if not return
+    # You can then pass to perform_clustering
+    # Which doesn't need to do the germ designation, just read assignments to is_germ
+    # Except I do need to collect the details from perform_clustering
+    done, germ, tissue = pass_screen(reads, args)
+    if done or len(reads) < args.min_cov:
+        return germ, tissue
+
+    # I think I fixed this problem
     try:
         reads, germ = perform_clustering(reads,
                                         min_bandwidth=args.min_bandwidth,
@@ -121,7 +165,7 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
                                         logging=False)
     except Exception as e:
         print(f"Exception on {chrom}:{start}-{end} {e}", file=sys.stderr)
-        return None, None, None
+        return None, None
 
     reads.insert(0, 'end', locus[2])
     reads.insert(0, 'start', locus[1])
@@ -149,7 +193,7 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
             filtered = coverage_filter(reads, args.min_reads_donor, args.min_reads_tissue)
         except Exception as e:
             print(f"Exception on {chrom}:{start}-{end} {e}", file=sys.stderr)
-            return None, None, None
+            return None, None
 
         if not filtered.empty:
             filtered.insert(0, 'end', locus[2])
@@ -158,7 +202,48 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
             # Found a plume as well
             germ.loc[germ.index.levels[1].isin(filtered['hap'].unique()), 'state'] += 2
 
-    return reads, germ, filtered
+    return germ, filtered
+
+def tissue_dev(deltas, smhtids, global_median, spread_min, min_alt, min_vaf):
+    """
+    Consolidate read support by tissue and check if there are at least min_alt reads in the tissue deviating from the
+    median and they are above some minimum VAF
+    """
+    by_tiss = defaultdict(list)
+    for m_id, p in zip(smhtids, deltas):
+        if p.size:
+            by_tiss[m_id.tissue_abv].append(p)
+
+    for ds in by_tiss.values():
+        ds = np.concatenate(ds) if len(ds) > 1 else ds[0]
+        # How many reads outside bounds
+        d_count = int(((ds > global_median + spread_min) |
+                       (ds < global_median - spread_min)).sum())
+        if d_count >= min_alt and (d_count / len(ds) >= min_vaf):
+            return True  # Only need one to pass
+    return False
+
+def pass_screen(parts, smhtids, args):
+    """
+    """
+    h = np.concatenate(parts) if len(parts) > 1 else parts[0]
+    germ_mean = np.mean(h)
+    # mean mid upper lower range and coverage and stuff
+    
+    # Sufficiently covered overall
+    if h.size < args.min_cov:
+        return False
+
+    # Global spread
+    if h.max() - h.min() < args.min_bandwidth:
+        return False
+
+    # Minimum deviating coverage and minimum VAF of that deviating coverage
+    if not tissue_dev(parts, smhtids, np.median(h), args.min_bandwidth, args.min_reads_donor, args.min_vaf):
+        return False
+    
+    # Only need one to pass
+    return True
 
 def scan_main(args):
     args = parse_args(args)
@@ -175,32 +260,29 @@ def scan_main(args):
 
     germ_out = open(f'{args.output}.germline.tsv', 'w')
     f_germ = True # For header writing
-    reads_out = open(f'{args.output}.anno_reads.tsv', 'w')
     unst_out = open(f'{args.output}.unstable.tsv', 'w')
-    f_read = True # For header writing, reads and unst are done together
+    f_filt = True # For header writing
+
     # Debug
     #for locus, h1_parts, h2_parts in stream_qdpi(inputs, to_analyze):
         #data, germ, filtered = run_analysis(locus, h1_parts, h2_parts, smhtids, args)
     with ProcessPoolExecutor(max_workers=args.threads) as executor:
-        futures = [
-            executor.submit(run_analysis, locus, h1_parts, h2_parts, smhtids, args)
+        tasks = (
+            (locus, h1_parts, h2_parts, smhtids, args)
             for locus, h1_parts, h2_parts in stream_qdpi(inputs, to_analyze)
-        ]
-
-        for future in tqdm(as_completed(futures), total=len(futures)):
-            data, germ, filtered = future.result()
-
-            if data is None:
+        )
+        results = bounded_map(executor, run_analysis, tasks, max_pending=args.threads * 4)
+        
+        for germ, filtered in tqdm(results):
+            if germ is None:
                 continue
             
             germ.to_csv(germ_out, sep='\t', header=f_germ)
             f_germ = False
 
             if filtered is not None:
-                data.drop(columns=['donor', 'protocol'], inplace=True)
-                data.to_csv(reads_out, sep='\t', index=False, header=f_read, float_format="%.1f")
-                filtered.to_csv(unst_out, sep='\t', index=False, header=f_read)
-                f_read = False
+                filtered.to_csv(unst_out, sep='\t', index=False, header=f_filt)
+                f_filt = False
 
 if __name__ == '__main__':
     scan_main(sys.argv[1:])

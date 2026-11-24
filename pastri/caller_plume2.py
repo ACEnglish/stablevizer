@@ -2,15 +2,18 @@ import os
 import re
 import sys
 import pandas as pd
+import numpy as np
 
-results = []
-for bdir in sys.argv[1:]:
+def main():
+    bdir = sys.argv[1]
     motif_fn = os.path.join(bdir, 'motif_annotations.tsv')
     unstable_fn = os.path.join(bdir, 'instability_table.tsv')
     if not os.path.exists(motif_fn) or not os.path.exists(unstable_fn):
-        continue
+        sys.exit(0)
     motifs = pd.read_csv(motif_fn, sep='\t')
     unstable = pd.read_csv(unstable_fn, sep='\t')
+    if motifs.empty or unstable.empty:
+        sys.exit(0)
 
     motifs.set_index(['locus', 'region'], inplace=True)
     keep_unstable = unstable[unstable['instability'] >= 0.02].set_index(['locus', 'region'])
@@ -19,8 +22,13 @@ for bdir in sys.argv[1:]:
     def summarize(state, values):
         # Quick length summary
         def subdo(arr):
+            if arr.empty:
+                return [np.nan] * 4
             return [arr.mean().round(1), arr.median().round(1), arr.max().round(1), arr.min().round(1)]
         return subdo(values[state]) + subdo(values[~state]) + [(~state).sum()]
+    
+    if sub_motifs.empty:
+        sys.exit(0)
 
     rows = []
     for (l,r), sub in sub_motifs.groupby(['locus', 'region']):
@@ -51,9 +59,11 @@ for bdir in sys.argv[1:]:
     motif_result.insert(0, 'chrom', chrom)
     motif_result.insert(1, 'start', start)
     motif_result.insert(2, 'end', end)
-    results.append(motif_result)
+    motif_result.to_csv(os.path.join(bdir, "plume_caller_results.tsv"), sep='\t', index=False)
 
-results = pd.concat(results)
-results.to_csv("delme.tsv", sep='\t', index=False)
-
-
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception as e:
+        print(e)
+        print(sys.argv[1])
