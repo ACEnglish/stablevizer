@@ -16,13 +16,33 @@ from pastri.qdpi_io import stream_qdpi
 
 
 # Don't like separating these from the perform_clustering outputs
-GERM_COLS = ["donor", "hap", "chrom", "start", "end", "nclust", "ngerm", "nassign", "total", "bandwidth", "pct_germ",
-             "mean", "mid", "lower", "upper", "range", "excess_kurtosis", "skewness", "p10_90_over_range",
-             "iqr_over_range", "norm_entropy", "state"]
+GERM_COLS = ["chrom", "start", "end", "donor", "hap", "nclust", "ngerm", "nassign", 
+             "coverage", "bandwidth", "mean", "mid", "lower", "upper", "norm_entropy", "state"]
 UNST_COLS = ["chrom", "start", "end", "donor", "protocol", "hap", "delta_min",
              "delta_mean", "delta_mid", "delta_max", "spread", "alt_reads", 
              "coverage", "vaf"]
 
+def calc_germ(reads, grp_cols, length_col='length'):
+    """
+    Calculate all the GERM_COLS for a set of reads
+    The reads must already be subset. So really this just works no a set of lengths.
+    coverage mean mid lower upper norm_entropy
+    And you can subset/fillna for the others.
+    """
+    return (
+        reads.groupby(grp_cols, as_index=False).agg(
+            coverage=(length_col, 'count'),
+            mean=(length_col, 'mean'),
+            mid=(length_col, 'median'),
+            lower=(length_col, 'min'),
+            upper=(length_col, 'max'),
+            norm_entropy=(length_col, normalized_entropy)
+        )
+        .round({'mean': 1, 'norm_entropy':4})
+        .astype({'mid': int})
+    )
+        
+    
 def bounded_map(executor, fn, arg_iter, max_pending):
     """
     Lazily submit fn(*args) for each args tuple in arg_iter, keeping at most
@@ -51,59 +71,17 @@ def parse_args(args):
                         help="Bed file of loci to analyze")
     parser.add_argument("-o", "--output", default="output",
                         help="Output prefix (%(default)s)")
-    parser.add_argument("-v", "--min-vaf", type=float, default=0.01,
-                        help="Minimum VAF (prescreening only; %(default)s)")
-    parser.add_argument("-r", "--min-reads-donor", type=int, default=3,
-                        help="Minimum number of non-germ reads required in donor (%(default)s)")
-    parser.add_argument("-R", "--min-reads-tissue", type=int, default=3,
-                        help="Minimum number of non-germ reads required in tissue (%(default)s)")
-    parser.add_argument("-b", "--min-bandwidth", type=int, default=10,
-                        help="Minimum MeanShift clustering bandwidth (%(default)s)")
-    parser.add_argument("-g", "--germ-vaf", type=float, default=0.8,
-                        help="Minimum fraction of reads to collect germline cluster (%(default)s)")
-    parser.add_argument("-q", "--germ-q", type=float, default=0.05,
-                        help="Germline length interval [0-1] for masking haplotagging errors (%(default)s)")
-    parser.add_argument("-p", "--plump-threshold", type=int, default=50,
-                        help="Plump type annotation placed on alleles with germline spread ≥ (%(default)s)")
-    parser.add_argument("--no-mask", action='store_true',
-                        help="Don't mask potential haplotagging errors (%(default)s)")
-    parser.add_argument("--abs-delta", action="store_true",
-                        help="Calculate abs(∆) (%(default)s)")
-    parser.add_argument("--min-cov", type=int, default=20,
-                        help="Minimum coverage over the locus (%(default)s)")
+    parser.add_argument("-b", "--bandwidth", type=int, default=10,
+                        help="Bandwidth for counting out_range read (%(default)s)")
+    #parser.add_argument("--min-cov", type=int, default=20,
+    #                    help="Minimum coverage over the locus (%(default)s)")
     parser.add_argument("-t", "--threads", type=int, default=1,
                         help="Number of threads (%(default)s)")
 
     args = parser.parse_args(args)
     return args
 
-
-
-def flatness_metrics(lengths: np.ndarray) -> dict:
-    """
-    How flat is the distribution
-    """
-    lengths = np.asarray(lengths, dtype=float)
-    lengths = lengths[~np.isnan(lengths)]
-
-    rng = lengths.max() - lengths.min()
-    p10, p50, p90 = np.percentile(lengths, [10, 50, 90])
-    q1, q3 = np.percentile(lengths, [25, 75])
-
-    return {
-        "range": rng,
-        "excess_kurtosis": stats.kurtosis(lengths, fisher=True, bias=False),
-        "skewness": stats.skew(lengths, bias=False),
-        #"skewtest": stats.skewtest(lengths).pvalue if len(lengths) >= 30 else np.nan,
-        # core-spread / total-range: near 1 = flat, near 0 = peaked w/ outlier tails
-        "p10_90_over_range": (p90 - p10) / rng if rng > 0 else np.nan,
-        "iqr_over_range": (q3 - q1) / rng if rng > 0 else np.nan,
-        # normalized Shannon entropy of the histogram: 1 = perfectly uniform
-        "norm_entropy": _normalized_entropy(lengths),
-        #"cv": lengths.std(ddof=1) / lengths.mean() if lengths.mean() != 0 else np.nan,
-    }
-
-def _normalized_entropy(lengths: np.ndarray, bins: int = 50) -> float:
+def normalized_entropy(lengths: np.ndarray, bins: int = 50) -> float:
     counts, _ = np.histogram(lengths, bins=bins)
     probs = counts / counts.sum()
     probs = probs[probs > 0]
@@ -114,11 +92,6 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
     chrom, start, end = locus
     span = int(end) - int(start)
     
-    # This should still build germline alleles so that is complete
-    # though I do need to shift it by the span, I reckon
-    # And I need to always report locus donor prot,prot,prot for who was analyzed
-
-
     # Turn to DataFrame compatible with perform_clustering
     h1_counts = [x.size for x in h1_parts]
     h2_counts = [x.size for x in h2_parts]
@@ -144,106 +117,39 @@ def run_analysis(locus, h1_parts, h2_parts, smhtids, args):
     reads['donor'] = reads['smhtid'].apply(lambda x: x.donor)
     reads['protocol'] = reads['smhtid'].apply(lambda x: x.protocol)
 
-    # For each donor-hap calculate metrics
-    # For each donor-tissue-hap calculate metrics
-    # You can check pass_screen if not return
-    # You can then pass to perform_clustering
-    # Which doesn't need to do the germ designation, just read assignments to is_germ
-    # Except I do need to collect the details from perform_clustering
-    done, germ, tissue = pass_screen(reads, args)
-    if done or len(reads) < args.min_cov:
-        return germ, tissue
-
-    # I think I fixed this problem
-    try:
-        reads, germ = perform_clustering(reads,
-                                        min_bandwidth=args.min_bandwidth,
-                                        germ_vaf=args.germ_vaf,
-                                        germ_q=args.germ_q,
-                                        absolute=args.abs_delta,
-                                        fix_haps=not args.no_mask,
-                                        logging=False)
-    except Exception as e:
-        print(f"Exception on {chrom}:{start}-{end} {e}", file=sys.stderr)
-        return None, None
-
-    reads.insert(0, 'end', locus[2])
-    reads.insert(0, 'start', locus[1])
-    reads.insert(0, 'chrom', locus[0])
-
+    germ = calc_germ(reads, ['donor', 'hap'])
     germ.insert(0, 'end', locus[2])
     germ.insert(0, 'start', locus[1])
     germ.insert(0, 'chrom', locus[0])
-    donor = all_smhtids[0].donor
-
-    # for each hap, calculate plump metrics
-    #for i in germ[(germ['upper'] - germ['lower']) >= args.plump_threshold].index.levels[1].unique():
-    for i in germ.index.levels[1].unique():
-        # only check the germline reads
-        sub = reads[(reads['hap'] == i) & reads['is_germ']]
-        metrics = flatness_metrics(sub['length'].values)
-        germ.loc[(donor, i), list(metrics.keys())] = list(metrics.values())
     
-    # state of 1 if there's a plume
-    germ['state'] = ((germ['upper'] - germ['lower']) >= args.plump_threshold).astype(int)
-
-    filtered = None
-    if (~reads['is_germ']).any():
-        try:
-            filtered = coverage_filter(reads, args.min_reads_donor, args.min_reads_tissue)
-        except Exception as e:
-            print(f"Exception on {chrom}:{start}-{end} {e}", file=sys.stderr)
-            return None, None
-
-        if not filtered.empty:
-            filtered.insert(0, 'end', locus[2])
-            filtered.insert(0, 'start', locus[1])
-            filtered.insert(0, 'chrom', locus[0])
-            # Found a plume as well
-            germ.loc[germ.index.levels[1].isin(filtered['hap'].unique()), 'state'] += 2
-
-    return germ, filtered
-
-def tissue_dev(deltas, smhtids, global_median, spread_min, min_alt, min_vaf):
-    """
-    Consolidate read support by tissue and check if there are at least min_alt reads in the tissue deviating from the
-    median and they are above some minimum VAF
-    """
-    by_tiss = defaultdict(list)
-    for m_id, p in zip(smhtids, deltas):
-        if p.size:
-            by_tiss[m_id.tissue_abv].append(p)
-
-    for ds in by_tiss.values():
-        ds = np.concatenate(ds) if len(ds) > 1 else ds[0]
-        # How many reads outside bounds
-        d_count = int(((ds > global_median + spread_min) |
-                       (ds < global_median - spread_min)).sum())
-        if d_count >= min_alt and (d_count / len(ds) >= min_vaf):
-            return True  # Only need one to pass
-    return False
-
-def pass_screen(parts, smhtids, args):
-    """
-    """
-    h = np.concatenate(parts) if len(parts) > 1 else parts[0]
-    germ_mean = np.mean(h)
-    # mean mid upper lower range and coverage and stuff
+    tissue = calc_germ(reads, ['donor', 'protocol', 'hap'])
+    tissue.insert(0, 'end', locus[2])
+    tissue.insert(0, 'start', locus[1])
+    tissue.insert(0, 'chrom', locus[0])
     
-    # Sufficiently covered overall
-    if h.size < args.min_cov:
-        return False
-
-    # Global spread
-    if h.max() - h.min() < args.min_bandwidth:
-        return False
-
-    # Minimum deviating coverage and minimum VAF of that deviating coverage
-    if not tissue_dev(parts, smhtids, np.median(h), args.min_bandwidth, args.min_reads_donor, args.min_vaf):
-        return False
+    # Does any donor-tissue have at least min_reads above min_vaf outside germ median±bandwidth.
+    # 1. Bring the donor/hap mean onto each read
+    merged = reads[['donor', 'protocol', 'hap', 'length']].merge(germ[['donor', 'hap', 'mid']], 
+                                                                 on=['donor', 'hap'], 
+                                                                 how='left')
     
-    # Only need one to pass
-    return True
+    # 2. Flag reads
+    merged['out_range'] = ~merged['length'].between(merged['mid'] - args.bandwidth, merged['mid'] + args.bandwidth)
+    
+    # 3. Group and sum
+    summary = merged.groupby(['donor', 'protocol', 'hap'], as_index=False).agg(
+        total_reads=('length', 'count'),
+        out_range=('out_range', 'sum')
+    )
+    summary['vaf'] = (summary['out_range'] / summary['total_reads']).round(4)
+    
+    tissue = tissue.merge(
+        summary[['donor', 'protocol', 'hap', 'out_range', 'vaf']],
+        on=['donor', 'protocol', 'hap'],
+        how='left'
+    )
+    return germ, tissue
+
 
 def scan_main(args):
     args = parse_args(args)
@@ -260,7 +166,7 @@ def scan_main(args):
 
     germ_out = open(f'{args.output}.germline.tsv', 'w')
     f_germ = True # For header writing
-    unst_out = open(f'{args.output}.unstable.tsv', 'w')
+    unst_out = open(f'{args.output}.tissues.tsv', 'w')
     f_filt = True # For header writing
 
     # Debug
@@ -277,7 +183,7 @@ def scan_main(args):
             if germ is None:
                 continue
             
-            germ.to_csv(germ_out, sep='\t', header=f_germ)
+            germ.to_csv(germ_out, sep='\t', index=False, header=f_germ)
             f_germ = False
 
             if filtered is not None:
