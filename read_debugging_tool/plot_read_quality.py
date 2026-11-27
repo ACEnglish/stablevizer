@@ -206,7 +206,7 @@ def main():
                     help="bp of surrounding read to show either side of the region "
                          "(region is shaded when > 0)")
     ap.add_argument("--smooth", type=int, default=25, help="moving-average window (bp)")
-    ap.add_argument("--lowq", type=float, default=10, help="low-quality threshold (Phred)")
+    ap.add_argument("--lowq", type=float, default=20, help="low-quality threshold (Phred)")
     ap.add_argument("--max-plots", type=int, default=200,
                     help="max panels per PDF (summary TSV always has every record)")
     ap.add_argument("--max-overlay", type=int, default=300,
